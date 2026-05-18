@@ -85,7 +85,7 @@ Para que la práctica sea ordenada y reutilizable, trabaja con un Workspace y 2 
 | SNOWLABS-INT | SETUP-LABS | `01_SETUP_DATOS_CTE_SUBQUERIES` | Crear database, schema, tablas y datos de prueba. Se ejecuta una vez al inicio o cuando quieras reiniciar el laboratorio. |
 | SNOWLABS-INT | SCRIPT-LABS | `02_LAB_CTE_SUBQUERIES` | Ejecutar los ejercicios del laboratorio sin mezclar el script de carga de datos. |
 
-#### Paso 0.0 — Crear el workspace de setup
+### Paso 0.0 — Crear el workspace de las prácticas
 
 1. Entra a **Snowsight**.
 2. Da clic en la opción **Projects**
@@ -93,16 +93,17 @@ Para que la práctica sea ordenada y reutilizable, trabaja con un Workspace y 2 
 4. Luego selecciona la opción **Private workspace**
 5. Nómbralo: **`SNOWLABS-INT`**
 6. Clic en **Create**
-7. Ahora dentro del nuevo workspace da clic en **+ Add new**
-8. Clic en **Folder** y nombralo: **`SETUP-LABS`**
 
-#### Paso 0.0.1 — Crear el script que carga los datos
 
-1. Dentro del Folder **SETUP-LABS** da clic en el simbolo **+**
-2. Crea un archivo de tipo **SQL**
-3. Nómbralo: **`01_SETUP_DATOS_CTE_SUBQUERIES`**.
-4. Pega ahí el siguiente script completo.
-5. Ejecuta el script completo antes de comenzar el laboratorio.
+#### Paso 0.0.1 — Crear el Folder y script que carga los datos
+
+1. Ahora dentro del nuevo workspace da clic en **+ Add new**
+2. Clic en **Folder** y nombralo: **`SETUP-LABS`**
+3. Dentro del Folder **SETUP-LABS** da clic en el simbolo **+**
+4. Crea un archivo de tipo **SQL**
+5. Nómbralo: **`01_SETUP_DATOS_CTE_SUBQUERIES`**.
+6. Pega ahí el siguiente script completo.
+7. Ejecuta el script completo antes de comenzar el laboratorio.
 
 Este dataset está diseñado para activar todos los escenarios de la práctica:
 
@@ -272,7 +273,7 @@ GROUP BY C.CIUDAD
 ORDER BY C.CIUDAD;
 ```
 
-#### Paso 0.0.2 — Crear el folder de laboratorio
+#### Paso 0.0.2 — Crear el folder y script de laboratorio
 
 1. Da clic en el botón **+ Add new**
 2. Clic en **Folder** y nombralo: **`SCRIPT-LABS`**.
