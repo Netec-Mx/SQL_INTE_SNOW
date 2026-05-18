@@ -46,10 +46,10 @@ Al completar este laboratorio serás capaz de:
 | Requisito | Detalle |
 |---|---|
 | Cuenta Snowflake activa | Trial o corporativa con rol `SYSADMIN` o `ACCOUNTADMIN` |
-| Script de setup ejecutado | `00_setup_laboratorios.sql` ejecutado por el instructor |
+| Script de setup ejecutado | No se asume script previo. Esta práctica incluye el setup completo de base, schema, tablas y datos. |
 | Database disponible | `LAB_SQL_INTERMEDIO` |
 | Schema disponible | `LAB_SQL_INTERMEDIO.VENTAS` |
-| Tablas requeridas | `CLIENTES`, `PEDIDOS`, `PRODUCTOS` |
+| Tablas requeridas | `CLIENTES`, `PEDIDOS`, `PRODUCTOS`, creadas en el Paso 0 |
 | Warehouse activo | `COMPUTE_WH` (tamaño `X-SMALL`) |
 
 ---
@@ -75,27 +75,292 @@ Al completar este laboratorio serás capaz de:
 | Visual Studio Code *(opcional)* | 1.80+ | Edición de scripts localmente |
 | SnowSQL *(opcional)* | 1.2.x+ | Ejecución desde terminal |
 
-### Configuración inicial del entorno
 
-Antes de comenzar los ejercicios, ejecuta los siguientes comandos en una **nueva Worksheet** de Snowsight para establecer el contexto de trabajo correcto:
+### Organización recomendada de Workspace en Snowsight
+
+Para que la práctica sea ordenada y reutilizable, trabaja con un Workspace y 2 folders. En esta práctica se usa la palabra **workspace** como una separación lógica de trabajo dentro de Snowsight; técnicamente, en Snowflake trabajarás con **Workspace**.
+
+| Workspace / Worksheet | Folder | Nombre sugerido | Uso |
+|---|---|---|---|
+| SNOWLABS-INT | SETUP-LABS | `01_SETUP_DATOS_CTE_SUBQUERIES` | Crear database, schema, tablas y datos de prueba. Se ejecuta una vez al inicio o cuando quieras reiniciar el laboratorio. |
+| SNOWLABS-INT | SCRIPT-LABS | `02_LAB_CTE_SUBQUERIES` | Ejecutar los ejercicios del laboratorio sin mezclar el script de carga de datos. |
+
+#### Paso 0.0 — Crear el workspace de setup
+
+1. Entra a **Snowsight**.
+2. Da clic en la opción **Projects**
+3. Clic en **+**.
+4. Luego selecciona la opción **Private workspace**
+5. Nómbralo: **`SNOWLABS-INT`**
+6. Clic en **Create**
+7. Ahora dentro del nuevo workspace da clic en **+ Add new**
+8. Clic en **Folder** y nombralo: **`SETUP-LABS`**
+
+#### Paso 0.0.1 — Crear el script que carga los datos
+
+1. Dentro del Folder **SETUP-LABS** da clic en el simbolo **+**
+2. Crea un archivo de tipo **SQL**
+3. Nómbralo: **`01_SETUP_DATOS_CTE_SUBQUERIES`**.
+4. Pega ahí el siguiente script completo.
+5. Ejecuta el script completo antes de comenzar el laboratorio.
+
+Este dataset está diseñado para activar todos los escenarios de la práctica:
+
+- Productos vendidos durante 2024 para practicar `IN` con subconsulta no correlacionada.
+- Productos nunca vendidos para practicar `NOT EXISTS`.
+- Clientes con dos pedidos para comparar pedidos individuales contra el promedio del mismo cliente.
+- Clientes distribuidos por ciudad para calcular promedios por ciudad usando CTEs encadenadas.
+- `PEDIDOS.PRODUCTO_ID` sin valores `NULL`, para que las validaciones con `NOT IN` no fallen por comportamiento de valores nulos.
 
 ```sql
--- 1. Seleccionar el warehouse de práctica (tamaño X-SMALL para minimizar consumo de créditos)
+-- 01_setup_datos_cte_subqueries_snowflake.sql
+-- Práctica Snowflake Intermedio
+-- Dataset mínimo para completar el laboratorio:
+-- Reestructuración de consultas con CTE y subqueries
+--
+-- Objetivo del dataset:
+-- 1) Tener productos vendidos en 2024.
+-- 2) Tener productos nunca vendidos.
+-- 3) Tener varios pedidos por cliente para comparar pedidos contra promedio individual.
+-- 4) Tener clientes por ciudad para calcular promedio por ciudad.
+-- 5) Evitar NULL en PEDIDOS.PRODUCTO_ID para que la validación con NOT IN sea correcta.
+
 USE WAREHOUSE COMPUTE_WH;
 
--- 2. Seleccionar la base de datos del laboratorio
+CREATE DATABASE IF NOT EXISTS LAB_SQL_INTERMEDIO;
 USE DATABASE LAB_SQL_INTERMEDIO;
 
--- 3. Seleccionar el schema de ventas
+CREATE SCHEMA IF NOT EXISTS VENTAS;
 USE SCHEMA VENTAS;
 
--- 4. Verificar que las tablas requeridas existen
+-- Opcional para repetir el laboratorio desde cero.
+DROP TABLE IF EXISTS PEDIDOS;
+DROP TABLE IF EXISTS PRODUCTOS;
+DROP TABLE IF EXISTS CLIENTES;
+
+CREATE OR REPLACE TABLE CLIENTES (
+    CLIENTE_ID NUMBER(10,0) NOT NULL,
+    NOMBRE VARCHAR(100) NOT NULL,
+    CIUDAD VARCHAR(80) NOT NULL,
+    SEGMENTO VARCHAR(40),
+    FECHA_ALTA DATE,
+    CONSTRAINT PK_CLIENTES PRIMARY KEY (CLIENTE_ID)
+);
+
+CREATE OR REPLACE TABLE PRODUCTOS (
+    PRODUCTO_ID NUMBER(10,0) NOT NULL,
+    NOMBRE VARCHAR(120) NOT NULL,
+    CATEGORIA VARCHAR(80) NOT NULL,
+    PRECIO_UNITARIO NUMBER(10,2) NOT NULL,
+    ACTIVO BOOLEAN DEFAULT TRUE,
+    CONSTRAINT PK_PRODUCTOS PRIMARY KEY (PRODUCTO_ID)
+);
+
+CREATE OR REPLACE TABLE PEDIDOS (
+    PEDIDO_ID NUMBER(10,0) NOT NULL,
+    CLIENTE_ID NUMBER(10,0) NOT NULL,
+    PRODUCTO_ID NUMBER(10,0) NOT NULL,
+    FECHA_PEDIDO DATE NOT NULL,
+    CANTIDAD NUMBER(10,0) NOT NULL,
+    MONTO NUMBER(12,2) NOT NULL,
+    CANAL VARCHAR(40),
+    CONSTRAINT PK_PEDIDOS PRIMARY KEY (PEDIDO_ID),
+    CONSTRAINT FK_PEDIDOS_CLIENTES FOREIGN KEY (CLIENTE_ID) REFERENCES CLIENTES(CLIENTE_ID),
+    CONSTRAINT FK_PEDIDOS_PRODUCTOS FOREIGN KEY (PRODUCTO_ID) REFERENCES PRODUCTOS(PRODUCTO_ID)
+);
+
+INSERT INTO CLIENTES (CLIENTE_ID, NOMBRE, CIUDAD, SEGMENTO, FECHA_ALTA) VALUES
+    (1,  'Ana Torres',       'CDMX',        'Retail',     '2023-01-15'),
+    (2,  'Luis Martínez',    'CDMX',        'Retail',     '2023-03-02'),
+    (3,  'María López',      'Guadalajara', 'PyME',       '2023-02-20'),
+    (4,  'Carlos Hernández', 'Guadalajara', 'Enterprise', '2023-05-10'),
+    (5,  'Sofía Ramírez',    'Monterrey',   'PyME',       '2023-06-18'),
+    (6,  'Jorge Castillo',   'Monterrey',   'Retail',     '2023-07-22'),
+    (7,  'Elena Flores',     'Puebla',      'Enterprise', '2023-08-04'),
+    (8,  'Diego Sánchez',    'Puebla',      'PyME',       '2023-09-11'),
+    (9,  'Valeria Cruz',     'Mérida',      'Enterprise', '2023-10-05'),
+    (10, 'Roberto Díaz',     'Mérida',      'Retail',     '2023-11-01');
+
+INSERT INTO PRODUCTOS (PRODUCTO_ID, NOMBRE, CATEGORIA, PRECIO_UNITARIO, ACTIVO) VALUES
+    (1,  'Laptop Pro 14',             'Electrónica', 1200.00, TRUE),
+    (2,  'Monitor 27 pulgadas',       'Electrónica',  350.00, TRUE),
+    (3,  'Teclado mecánico',          'Accesorios',   120.00, TRUE),
+    (4,  'Mouse inalámbrico',         'Accesorios',    80.00, TRUE),
+    (5,  'Silla ergonómica',          'Oficina',      420.00, TRUE),
+    (6,  'Escritorio ajustable',      'Oficina',      680.00, TRUE),
+    (7,  'Licencia BI anual',         'Software',     900.00, TRUE),
+    (8,  'Licencia CRM anual',        'Software',    1100.00, TRUE),
+    (9,  'Servidor compacto',         'Infraestructura', 1500.00, TRUE),
+    (10, 'NAS 8TB',                   'Infraestructura', 850.00, TRUE),
+    -- Estos productos quedan intencionalmente sin ventas para el ejercicio NOT EXISTS.
+    (11, 'Tablet Ejecutiva',          'Electrónica',  550.00, TRUE),
+    (12, 'Audífonos con cancelación', 'Accesorios',   220.00, TRUE);
+
+INSERT INTO PEDIDOS (PEDIDO_ID, CLIENTE_ID, PRODUCTO_ID, FECHA_PEDIDO, CANTIDAD, MONTO, CANAL) VALUES
+    (1001, 1,  1,  '2024-01-12', 1,  500.00,  'Web'),
+    (1002, 1,  7,  '2024-03-15', 1, 1000.00,  'Ejecutivo'),
+
+    (1003, 2,  3,  '2024-02-03', 2,  200.00,  'Web'),
+    (1004, 2,  4,  '2023-11-21', 3,  500.00,  'Web'),
+
+    (1005, 3,  2,  '2024-04-09', 1,  300.00,  'Marketplace'),
+    (1006, 3,  5,  '2025-01-18', 1,  600.00,  'Ejecutivo'),
+
+    (1007, 4,  8,  '2024-05-06', 1,  700.00,  'Ejecutivo'),
+    (1008, 4,  9,  '2024-09-19', 1,  900.00,  'Ejecutivo'),
+
+    (1009, 5,  6,  '2023-12-05', 1,  500.00,  'Web'),
+    (1010, 5,  7,  '2024-06-14', 1,  600.00,  'Marketplace'),
+
+    (1011, 6,  4,  '2024-07-07', 1,  100.00,  'Web'),
+    (1012, 6,  3,  '2024-08-25', 1,  200.00,  'Web'),
+
+    (1013, 7,  5,  '2024-10-02', 1,  400.00,  'Ejecutivo'),
+    (1014, 7,  8,  '2025-02-12', 1,  900.00,  'Ejecutivo'),
+
+    (1015, 8,  2,  '2024-11-17', 1,  650.00,  'Marketplace'),
+    (1016, 8,  6,  '2024-12-09', 1,  650.00,  'Marketplace'),
+
+    (1017, 9,  9,  '2024-01-28', 1,  800.00,  'Ejecutivo'),
+    (1018, 9,  1,  '2025-03-03', 1, 1200.00,  'Ejecutivo'),
+
+    (1019, 10, 10, '2023-10-30', 1,  200.00,  'Web'),
+    (1020, 10, 5,  '2024-04-22', 1,  400.00,  'Web');
+
+-- Validación rápida del dataset.
+SELECT 'CLIENTES' AS TABLA, COUNT(*) AS FILAS FROM CLIENTES
+UNION ALL
+SELECT 'PRODUCTOS' AS TABLA, COUNT(*) AS FILAS FROM PRODUCTOS
+UNION ALL
+SELECT 'PEDIDOS' AS TABLA, COUNT(*) AS FILAS FROM PEDIDOS;
+
+-- Resultado esperado:
+-- CLIENTES  = 10
+-- PRODUCTOS = 12
+-- PEDIDOS   = 20
+
+-- Validación de productos nunca vendidos.
+SELECT
+    (SELECT COUNT(*) FROM PRODUCTOS) AS TOTAL_PRODUCTOS,
+    (SELECT COUNT(DISTINCT PRODUCTO_ID) FROM PEDIDOS) AS PRODUCTOS_CON_PEDIDOS,
+    (SELECT COUNT(*) FROM PRODUCTOS PR
+     WHERE NOT EXISTS (
+        SELECT 1
+        FROM PEDIDOS PE
+        WHERE PE.PRODUCTO_ID = PR.PRODUCTO_ID
+     )) AS PRODUCTOS_SIN_PEDIDOS;
+
+-- Resultado esperado:
+-- TOTAL_PRODUCTOS = 12
+-- PRODUCTOS_CON_PEDIDOS = 10
+-- PRODUCTOS_SIN_PEDIDOS = 2
+
+-- Validación de distribución por ciudad para el Ejercicio 4.
+WITH TOTALES_CLIENTE AS (
+    SELECT CLIENTE_ID, SUM(MONTO) AS MONTO_TOTAL
+    FROM PEDIDOS
+    GROUP BY CLIENTE_ID
+)
+SELECT
+    C.CIUDAD,
+    COUNT(*) AS CLIENTES_CON_PEDIDOS,
+    ROUND(AVG(TC.MONTO_TOTAL), 2) AS PROMEDIO_CIUDAD
+FROM CLIENTES C
+INNER JOIN TOTALES_CLIENTE TC
+    ON C.CLIENTE_ID = TC.CLIENTE_ID
+GROUP BY C.CIUDAD
+ORDER BY C.CIUDAD;
+```
+
+#### Paso 0.0.2 — Crear el folder de laboratorio
+
+1. Da clic en el botón **+ Add new**
+2. Clic en **Folder** y nombralo: **`SCRIPT-LABS`**.
+3. Dentro de **SCRIPT_LABS** crea un archivo de tipo **SQL**
+4. Nómbralo: **`01_LAB_CTE_SUBQUERIES`**.
+5. Usa este archivo para ejecutar los ejercicios 1, 2, 3 y 4.
+6. **No pegues aquí el script de carga completo; solo usa las consultas de análisis del laboratorio.**
+
+---
+
+### Paso 0.2 — Confirmar que las tablas quedaron disponibles
+
+1. Dento del archivo **01_LAB_CTE_SUBQUERIES** ejecuta lo siguiente:
+
+```sql
+USE WAREHOUSE COMPUTE_WH;
+USE DATABASE LAB_SQL_INTERMEDIO;
+USE SCHEMA VENTAS;
+
 SHOW TABLES;
 ```
 
-**Salida esperada de `SHOW TABLES`:** Debes ver al menos las tablas `CLIENTES`, `PEDIDOS` y `PRODUCTOS` listadas con su nombre, tipo y fecha de creación.
+**Resultado esperado:** deben aparecer al menos estas tablas:
 
-> ⚠️ **Importante:** Si alguna tabla no aparece, detén el laboratorio y contacta al instructor para que ejecute el script `00_setup_laboratorios.sql`.
+| Tabla | Uso en la práctica |
+|---|---|
+| `CLIENTES` | Datos maestros de clientes: nombre, ciudad, segmento y fecha de alta. |
+| `PRODUCTOS` | Catálogo de productos, incluyendo productos vendidos y no vendidos. |
+| `PEDIDOS` | Hechos transaccionales: cliente, producto, fecha, cantidad, monto y canal. |
+
+### Paso 0.3 — Validar volumen mínimo de datos
+
+Ejecuta:
+
+```sql
+SELECT 'CLIENTES' AS TABLA, COUNT(*) AS FILAS FROM CLIENTES
+UNION ALL
+SELECT 'PRODUCTOS' AS TABLA, COUNT(*) AS FILAS FROM PRODUCTOS
+UNION ALL
+SELECT 'PEDIDOS' AS TABLA, COUNT(*) AS FILAS FROM PEDIDOS;
+```
+
+**Resultado esperado:**
+
+| TABLA | FILAS |
+|---|---:|
+| CLIENTES | 10 |
+| PRODUCTOS | 12 |
+| PEDIDOS | 20 |
+
+### Paso 0.4 — Validar que hay productos sin ventas
+
+Ejecuta:
+
+```sql
+SELECT
+    (SELECT COUNT(*) FROM PRODUCTOS) AS TOTAL_PRODUCTOS,
+    (SELECT COUNT(DISTINCT PRODUCTO_ID) FROM PEDIDOS) AS PRODUCTOS_CON_PEDIDOS,
+    (SELECT COUNT(*)
+     FROM PRODUCTOS PR
+     WHERE NOT EXISTS (
+        SELECT 1
+        FROM PEDIDOS PE
+        WHERE PE.PRODUCTO_ID = PR.PRODUCTO_ID
+     )) AS PRODUCTOS_SIN_PEDIDOS;
+```
+
+**Resultado esperado:**
+
+| TOTAL_PRODUCTOS | PRODUCTOS_CON_PEDIDOS | PRODUCTOS_SIN_PEDIDOS |
+|---:|---:|---:|
+| 12 | 10 | 2 |
+
+### Paso 0.5 — Validar que existen pedidos de 2024
+
+Ejecuta:
+
+```sql
+SELECT
+    YEAR(FECHA_PEDIDO) AS ANIO,
+    COUNT(*) AS TOTAL_PEDIDOS,
+    SUM(MONTO) AS MONTO_TOTAL
+FROM PEDIDOS
+GROUP BY YEAR(FECHA_PEDIDO)
+ORDER BY ANIO;
+```
+
+**Resultado esperado:** debe haber registros para `2023`, `2024` y `2025`. El año `2024` debe tener suficientes pedidos para que el Ejercicio 2.1 devuelva productos vendidos en ese año.
 
 ---
 
@@ -139,7 +404,9 @@ SELECT * FROM PRODUCTOS LIMIT 5;
 
 **Paso 1.3 — Analizar la consulta monolítica de partida**
 
-La siguiente consulta responde a la pregunta de negocio: *"¿Qué clientes han realizado pedidos por un monto total superior al promedio general de todos los pedidos, y cuántos pedidos tiene cada uno?"*
+La siguiente consulta responde a la pregunta de negocio: 
+
+-**"¿Qué clientes han realizado pedidos por un monto total superior al promedio general de todos los pedidos, y cuántos pedidos tiene cada uno?"**
 
 Ejecuta esta consulta **sin modificarla** y observa su estructura y resultado:
 
@@ -199,7 +466,9 @@ Anota mentalmente (o en un comentario SQL) las respuestas a estas preguntas ante
 
 **Paso 2.1 — Subconsulta no correlacionada en `WHERE` con `IN`**
 
-Pregunta de negocio: *"¿Qué productos han sido incluidos en al menos un pedido durante el año 2024?"*
+Pregunta de negocio: 
+
+- **"¿Qué productos han sido incluidos en al menos un pedido durante el año 2024?"**
 
 ```sql
 -- Subconsulta no correlacionada con IN
@@ -222,9 +491,11 @@ ORDER BY CATEGORIA, NOMBRE;
 
 ---
 
-**Paso 2.2 — Subconsulta no correlacionada en `WHERE` con `NOT EXISTS`**
+**Paso 2.2 — Subconsulta correlacionada en `WHERE` con `NOT EXISTS`**
 
-Pregunta de negocio: *"¿Qué productos NUNCA han sido vendidos?"*
+Pregunta de negocio: 
+
+- **"¿Qué productos NUNCA han sido vendidos?"**
 
 ```sql
 -- Subconsulta con NOT EXISTS (más segura que NOT IN cuando puede haber NULLs)
@@ -259,7 +530,9 @@ SELECT COUNT(DISTINCT PRODUCTO_ID) AS PRODUCTOS_CON_PEDIDOS FROM PEDIDOS;
 
 **Paso 2.3 — Subconsulta escalar en `SELECT`**
 
-Pregunta de negocio: *"Para cada cliente, ¿cuánto representa su monto total de pedidos respecto al monto total global de todos los pedidos?"*
+Pregunta de negocio: 
+
+- **"Para cada cliente, ¿cuánto representa su monto total de pedidos respecto al monto total global de todos los pedidos?"**
 
 ```sql
 -- Subconsulta escalar en SELECT: se ejecuta una vez y su valor se reutiliza en cada fila
@@ -288,7 +561,9 @@ ORDER BY PORCENTAJE_PARTICIPACION DESC;
 
 **Paso 2.4 — Subconsulta correlacionada en `WHERE` para comparar contra promedio individual**
 
-Pregunta de negocio: *"¿Qué pedidos individuales superan el monto promedio de todos los pedidos realizados por ese mismo cliente?"*
+Pregunta de negocio: 
+
+- **"¿Qué pedidos individuales superan el monto promedio de todos los pedidos realizados por ese mismo cliente?"**
 
 ```sql
 -- Subconsulta correlacionada: el promedio se calcula POR CADA CLIENTE
@@ -695,7 +970,7 @@ Una vez completados todos los ejercicios, ejecuta las siguientes verificaciones 
 -- Ambas consultas deben devolver el mismo conjunto de CLIENTE_ID
 
 -- Versión monolítica
-SELECT CLIENTE_ID AS ID_MONOLITICA
+SELECT C.CLIENTE_ID AS ID_MONOLITICA
 FROM CLIENTES C
 INNER JOIN PEDIDOS P ON C.CLIENTE_ID = P.CLIENTE_ID
 WHERE C.CLIENTE_ID IN (
@@ -711,51 +986,90 @@ GROUP BY C.CLIENTE_ID, C.NOMBRE, C.CIUDAD
 EXCEPT  -- Snowflake soporta EXCEPT para comparar conjuntos
 
 -- Versión CTE
-WITH TOTALES_POR_CLIENTE AS (
-    SELECT CLIENTE_ID, SUM(MONTO) AS MONTO_TOTAL FROM PEDIDOS GROUP BY CLIENTE_ID
-),
-PROMEDIO_GLOBAL AS (
-    SELECT AVG(MONTO_TOTAL) AS PROMEDIO_MONTO FROM TOTALES_POR_CLIENTE
-)
-SELECT C.CLIENTE_ID AS ID_CTE
-FROM CLIENTES C
-INNER JOIN TOTALES_POR_CLIENTE TPC ON C.CLIENTE_ID = TPC.CLIENTE_ID
-CROSS JOIN PROMEDIO_GLOBAL PG
-WHERE TPC.MONTO_TOTAL > PG.PROMEDIO_MONTO;
+SELECT * FROM (
+    WITH TOTALES_POR_CLIENTE AS (
+        SELECT CLIENTE_ID, SUM(MONTO) AS MONTO_TOTAL FROM PEDIDOS GROUP BY CLIENTE_ID
+    ),
+    PROMEDIO_GLOBAL AS (
+        SELECT AVG(MONTO_TOTAL) AS PROMEDIO_MONTO FROM TOTALES_POR_CLIENTE
+    )
+    SELECT C.CLIENTE_ID AS ID_CTE
+    FROM CLIENTES C
+    INNER JOIN TOTALES_POR_CLIENTE TPC ON C.CLIENTE_ID = TPC.CLIENTE_ID
+    CROSS JOIN PROMEDIO_GLOBAL PG
+    WHERE TPC.MONTO_TOTAL > PG.PROMEDIO_MONTO
+);
 
 -- Si el resultado es vacío (0 filas), ambas versiones son equivalentes. ✅
 ```
 
 ```sql
 -- VALIDACIÓN 2: Confirmar que productos sin ventas + productos con ventas = total de productos
+-- Se usa NOT EXISTS para evitar problemas si en otro dataset PRODUCTO_ID pudiera contener NULL.
 SELECT
-    (SELECT COUNT(*) FROM PRODUCTOS)                                   AS TOTAL_PRODUCTOS,
-    (SELECT COUNT(DISTINCT PRODUCTO_ID) FROM PEDIDOS)                  AS CON_PEDIDOS,
-    (SELECT COUNT(*) FROM PRODUCTOS WHERE PRODUCTO_ID NOT IN
-        (SELECT DISTINCT PRODUCTO_ID FROM PEDIDOS))                    AS SIN_PEDIDOS,
+    (SELECT COUNT(*) FROM PRODUCTOS) AS TOTAL_PRODUCTOS,
+    (SELECT COUNT(DISTINCT PRODUCTO_ID) FROM PEDIDOS) AS CON_PEDIDOS,
+    (SELECT COUNT(*)
+     FROM PRODUCTOS PR
+     WHERE NOT EXISTS (
+        SELECT 1
+        FROM PEDIDOS PE
+        WHERE PE.PRODUCTO_ID = PR.PRODUCTO_ID
+     )) AS SIN_PEDIDOS,
     (SELECT COUNT(DISTINCT PRODUCTO_ID) FROM PEDIDOS) +
-    (SELECT COUNT(*) FROM PRODUCTOS WHERE PRODUCTO_ID NOT IN
-        (SELECT DISTINCT PRODUCTO_ID FROM PEDIDOS))                    AS SUMA_VERIFICACION;
+    (SELECT COUNT(*)
+     FROM PRODUCTOS PR
+     WHERE NOT EXISTS (
+        SELECT 1
+        FROM PEDIDOS PE
+        WHERE PE.PRODUCTO_ID = PR.PRODUCTO_ID
+     )) AS SUMA_VERIFICACION;
 
--- SUMA_VERIFICACION debe ser igual a TOTAL_PRODUCTOS ✅
+-- Resultado esperado con este dataset:
+-- TOTAL_PRODUCTOS = 12
+-- CON_PEDIDOS = 10
+-- SIN_PEDIDOS = 2
+-- SUMA_VERIFICACION = 12 ✅
 ```
 
 ```sql
 -- VALIDACIÓN 3: Confirmar que la suma de porcentajes de participación es ~100%
 WITH MONTO_GLOBAL AS (
     SELECT SUM(MONTO) AS TOTAL_GLOBAL FROM PEDIDOS
+),
+PARTICIPACION_CLIENTE AS (
+    SELECT
+        P.CLIENTE_ID,
+        SUM(P.MONTO) AS MONTO_CLIENTE,
+        MAX(MG.TOTAL_GLOBAL) AS MONTO_GLOBAL,
+        SUM(P.MONTO) / MAX(MG.TOTAL_GLOBAL) * 100 AS PORCENTAJE_PARTICIPACION
+    FROM PEDIDOS P
+    CROSS JOIN MONTO_GLOBAL MG
+    GROUP BY P.CLIENTE_ID
 )
 SELECT
-    ROUND(
-        SUM(SUM(P.MONTO)) / MAX(MG.TOTAL_GLOBAL) * 100,
-        2
-    ) AS SUMA_PORCENTAJES
-FROM PEDIDOS P
-CROSS JOIN MONTO_GLOBAL MG
-GROUP BY MG.TOTAL_GLOBAL;
+    ROUND(SUM(PORCENTAJE_PARTICIPACION), 2) AS SUMA_PORCENTAJES
+FROM PARTICIPACION_CLIENTE;
 
--- El resultado debe ser 100.00 (o muy cercano por redondeo) ✅
+-- Resultado esperado: 100.00 ✅
 ```
+
+---
+
+## Resultados esperados clave con el dataset cargado
+
+Estos resultados ayudan al instructor y al alumno a validar rápidamente que el laboratorio se está ejecutando sobre el dataset correcto.
+
+| Consulta / Ejercicio | Resultado esperado |
+|---|---|
+| Conteo de `CLIENTES` | 10 filas |
+| Conteo de `PRODUCTOS` | 12 filas |
+| Conteo de `PEDIDOS` | 20 filas |
+| Productos vendidos al menos una vez | 10 productos |
+| Productos nunca vendidos | 2 productos: `Tablet Ejecutiva` y `Audífonos con cancelación` |
+| Monto global de pedidos | `11300.00` |
+| Suma de participación por cliente | `100.00` |
+| Clasificación final por ciudad | 4 clientes por encima, 4 por debajo y 2 igual al promedio |
 
 ---
 
@@ -831,7 +1145,7 @@ WHERE PRODUCTO_ID IS NULL;
 
 ---
 
-## Limpieza del Entorno
+## Limpieza del entorno
 
 Al finalizar el laboratorio, ejecuta los siguientes comandos para liberar recursos y evitar consumo innecesario de créditos Snowflake:
 
