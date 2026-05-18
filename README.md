@@ -16,14 +16,14 @@ Cada uno de estos laboratorios está diseñado para ofrecerte una experiencia pr
 
 - [Práctica 1: Reestructuración de consultas con CTE y subqueries](Capitulo01/README.md#reestructuración-de-consultas-con-cte-y-subqueries)
   
-  - Descripción: En este laboratorio partirás de consultas SQL monolíticas y difíciles de mantener, y las reestructurarás progresivamente usando dos herramientas fundamentales: subconsultas (en cláusulas SELECT, WHERE y FROM) y Common Table Expressions (CTEs). A lo largo de cuatro ejercicios encadenados, aplicarás los conceptos de subconsultas correlacionadas y no correlacionadas vistos en la Lección 1.1, y luego transformarás esas mismas consultas en estructuras WITH para comparar legibilidad y mantenibilidad. Al finalizar, tendrás criterios concretos para decidir cuándo usar cada enfoque en un entorno real de negocio.
+  - Descripción: En esta práctica reestructurarás consultas SQL complejas usando subconsultas y CTEs, comparando ambos enfoques para mejorar la legibilidad, mantenibilidad y toma de decisiones técnicas.
   
   - ⏱️ Duración estimada: 60 min
 
 ### Capítulo 2
 
 - [Clasificación de clientes y reglas de negocio](Capitulo02/README.md#clasificación-de-clientes-y-reglas-de-negocio)
-  - Descripción: Actividad práctica guiada basada estrictamente en el contenido del módulo.
+  - Descripción: En esta práctica aplicarás CASE WHEN para segmentar clientes con reglas de negocio, combinando monto, frecuencia y antigüedad para generar un dataset listo para reportes.
   - Duración estimada: 60 min
 
 ### Capítulo 3
