@@ -1,158 +1,484 @@
-# Clasificación de clientes y reglas de negocio
+# Clasificación de clientes y reglas de negocio con CASE WHEN
 
-## 1. Metadatos
+## Metadatos
 
-| Atributo | Valor |
+| Campo | Detalle |
 |---|---|
 | **Duración estimada** | 60 minutos |
 | **Complejidad** | Media |
-| **Nivel Bloom** | Aplicar (Apply) |
-| **Módulo** | 2 — Clasificación y segmentación con CASE WHEN |
-| **Laboratorio previo requerido** | Lab 01 (CTEs y subqueries) |
-| **Schema de datos** | `LAB_SQL_INTERMEDIO.VENTAS` |
+| **Nivel Bloom** | Aplicar (*Apply*) |
+| **Módulo** | 2 — Clasificación y segmentación con `CASE WHEN` |
+| **Plataforma** | Snowflake (Snowsight Worksheet) |
+| **Schema de práctica** | `LAB_SQL_INTERMEDIO.VENTAS` |
+| **Laboratorio previo recomendado** | Práctica 1 — Reestructuración de consultas con CTE y subqueries |
 
 ---
 
-## 2. Descripción General
+## Descripción General
 
-En este laboratorio aplicarás la expresión `CASE WHEN` para construir un sistema de segmentación de clientes basado en reglas de negocio reales. Partirás de las tablas `CLIENTES` y `PEDIDOS` del schema de práctica y crearás clasificaciones progresivas: primero una segmentación simple por monto de compra, luego una clasificación multinivel que combina monto, frecuencia y antigüedad del cliente, y finalmente un resumen ejecutivo por segmento usando `GROUP BY` con métricas agregadas. El resultado final es un dataset enriquecido listo para reportes o para alimentar análisis posteriores.
+En este laboratorio aplicarás `CASE WHEN` para construir un sistema de segmentación de clientes basado en reglas de negocio. Partirás de un dataset controlado dentro del schema `LAB_SQL_INTERMEDIO.VENTAS` y generarás clasificaciones progresivas: primero una segmentación simple por monto de pedido, después una clasificación multinivel de clientes combinando monto, frecuencia y antigüedad, y finalmente un resumen ejecutivo por segmento con métricas agregadas.
+
+Esta práctica incluye un **paso previo de setup de datos**, porque los ejercicios necesitan datos específicos para activar todos los escenarios: clientes `GOLD`, `SILVER`, `BRONZE`, `NEW`, pedidos cancelados, pedidos de bajo/medio/alto/premium valor y casos de riesgo de abandono.
 
 ---
 
-## 3. Objetivos de Aprendizaje
+## Objetivos de Aprendizaje
 
 Al completar este laboratorio serás capaz de:
 
-- [ ] Implementar `CASE WHEN` en forma buscada y simple para clasificar clientes según reglas de negocio definidas (segmentos GOLD, SILVER, BRONZE).
-- [ ] Construir clasificaciones multinivel que combinen condiciones compuestas con `AND`, `OR` y `BETWEEN` sobre monto de compra, frecuencia y antigüedad.
-- [ ] Integrar `CASE WHEN` dentro de funciones de agregación (`SUM`, `COUNT`, `AVG`) para generar métricas por segmento en una sola consulta.
-- [ ] Preparar un dataset enriquecido con columnas derivadas de clasificación usando CTEs, listo para análisis posterior.
-- [ ] Utilizar `IFF()` como alternativa simplificada de Snowflake para clasificaciones de dos ramas.
+- [ ] Implementar `CASE WHEN` en forma buscada y simple para clasificar registros según reglas de negocio.
+- [ ] Clasificar pedidos por rango de monto usando condiciones ordenadas.
+- [ ] Construir una segmentación multinivel de clientes con condiciones compuestas usando `AND`, `OR` y `BETWEEN`.
+- [ ] Integrar `CASE WHEN` dentro de agregaciones (`SUM`, `COUNT`, `AVG`) para generar reportes ejecutivos.
+- [ ] Usar `IFF()` como alternativa simplificada de Snowflake para clasificaciones binarias.
+- [ ] Preparar un dataset enriquecido con columnas derivadas de clasificación usando CTEs encadenadas.
 
 ---
 
-## 4. Prerrequisitos
+## Prerrequisitos
 
 ### Conocimientos previos
 
 | Área | Nivel requerido |
 |---|---|
-| CTEs (`WITH ... AS`) y subqueries | Completado (Lab 01) o equivalente |
-| Operadores de comparación y lógicos (`AND`, `OR`, `NOT`, `BETWEEN`, `IN`) | Intermedio |
-| Funciones de agregación (`SUM`, `COUNT`, `AVG`, `MAX`, `MIN`) con `GROUP BY` | Intermedio |
-| Sintaxis básica de `SELECT`, `FROM`, `WHERE`, `ORDER BY` | Sólido |
+| `SELECT`, `FROM`, `WHERE`, `ORDER BY` | Sólido |
+| `INNER JOIN` y `LEFT JOIN` | Intermedio |
+| `GROUP BY` con `SUM`, `COUNT`, `AVG`, `MAX`, `MIN` | Intermedio |
+| CTEs con `WITH ... AS` | Recomendado |
+| Operadores lógicos `AND`, `OR`, `BETWEEN`, `IN` | Intermedio |
+| Concepto de valor `NULL` y uso de `COALESCE` | Básico |
 
 ### Acceso y configuración
 
-| Recurso | Estado requerido |
+| Requisito | Detalle |
 |---|---|
-| Cuenta Snowflake activa (trial o corporativa) | ✅ Activa y accesible |
-| Script `00_setup_laboratorios.sql` ejecutado por el instructor | ✅ Ejecutado previamente |
-| Base de datos `LAB_SQL_INTERMEDIO` visible en Snowsight | ✅ Confirmado |
-| Schema `VENTAS` con tablas `CLIENTES`, `PEDIDOS`, `VENTAS`, `PRODUCTOS` | ✅ Poblado |
-| Warehouse `LAB_WH` disponible (tamaño X-SMALL) | ✅ Activo o suspendido (se activa al ejecutar) |
+| Cuenta Snowflake activa | Trial o corporativa |
+| Rol sugerido | `SYSADMIN` o rol equivalente asignado por el instructor |
+| Script de setup previo | No se asume script externo. Esta práctica incluye el setup completo de tablas y datos |
+| Database disponible | `LAB_SQL_INTERMEDIO` |
+| Schema disponible | `LAB_SQL_INTERMEDIO.VENTAS` |
+| Tablas requeridas | `CLIENTES`, `PEDIDOS`, `PRODUCTOS`, `VENTAS` |
+| Warehouse activo | `COMPUTE_WH` tamaño `X-SMALL` |
 
 ---
 
-## 5. Entorno del Laboratorio
+## Entorno de Laboratorio
 
 ### Hardware recomendado
 
 | Componente | Mínimo | Recomendado |
 |---|---|---|
-| Procesador | Intel Core i5 / AMD Ryzen 5 (64-bit) | Intel Core i7 / AMD Ryzen 7 |
+| Procesador | Intel Core i5 / AMD Ryzen 5 | Intel Core i7 / AMD Ryzen 7 |
 | RAM | 8 GB | 16 GB |
-| Almacenamiento libre | 2 GB | 5 GB |
+| Almacenamiento libre | 500 MB | 2 GB |
+| Conexión a Internet | 10 Mbps | 25 Mbps |
 | Resolución de pantalla | 1280×768 | 1920×1080 |
-| Conexión a Internet | 10 Mbps | 25 Mbps o superior |
 
 ### Software requerido
 
 | Software | Versión mínima | Uso |
 |---|---|---|
-| Navegador web (Chrome / Firefox / Edge / Safari) | 110+ / 110+ / 110+ / 16+ | Acceso a Snowsight |
-| Snowflake (Snowsight) | Enterprise o Trial (versión web actual) | Ejecución de consultas SQL |
-| Visual Studio Code (opcional) | 1.80+ | Edición previa de scripts |
-| SnowSQL CLI (opcional) | 1.2.x+ | Ejecución por línea de comandos |
+| Navegador web Chrome / Firefox / Edge / Safari | Versión reciente | Acceso a Snowsight |
+| Snowflake Snowsight | Versión web actual | Ejecución de consultas SQL |
+| Visual Studio Code *(opcional)* | 1.80+ | Edición local de scripts |
+| SnowSQL *(opcional)* | 1.2.x+ | Ejecución desde terminal |
 
-### Configuración inicial del entorno
+---
 
-Antes de comenzar los ejercicios, ejecuta el siguiente bloque de configuración en Snowsight para establecer el contexto correcto. Abre una nueva hoja de trabajo (*Worksheet*) y pega estas instrucciones:
+## Organización recomendada de Workspace en Snowsight
+
+Para mantener ordenado el laboratorio, separa el script de carga de datos del script de ejercicios.
+
+| Workspace | Folder | Nombre sugerido | Uso |
+|---|---|---|---|
+| `SNOWLABS-INT` | `SETUP-LABS` | `02_SETUP_DATOS_CASE_WHEN_SEGMENTACION` | Crear o recrear tablas y cargar datos del Lab 02 |
+| `SNOWLABS-INT` | `SCRIPT-LABS` | `02_LAB_CASE_WHEN_SEGMENTACION` | Ejecutar los ejercicios del laboratorio |
+
+> Nota: si ya creaste el workspace `SNOWLABS-INT` en la práctica 1, no lo vuelvas a crear. Solo agrega los folders o archivos faltantes.
+
+---
+
+## Paso 0 — Preparación del workspace y dataset
+
+### Paso 0.0 — Crear o reutilizar el workspace de prácticas
+
+1. Entra a **Snowsight**.
+2. Da clic en **Projects**.
+3. Si ya existe el workspace **`SNOWLABS-INT`**, ábrelo.
+4. Si no existe:
+   1. Da clic en **+**.
+   2. Selecciona **Private workspace**.
+   3. Nómbralo **`SNOWLABS-INT`**.
+   4. Da clic en **Create**.
+
+### Paso 0.1 — Crear el folder y script de setup
+
+1. Dentro del workspace **`SNOWLABS-INT`**, da clic en **+ Add new**.
+2. Crea un folder llamado **`SETUP-LABS`** si aún no existe.
+3. Dentro de **`SETUP-LABS`**, crea un archivo de tipo **SQL**.
+4. Nómbralo **`02_SETUP_DATOS_CASE_WHEN_SEGMENTACION`**.
+5. Pega y ejecuta completo el siguiente script.
+
+Este dataset está diseñado para activar todos los escenarios de la práctica:
+
+- Pedidos en categorías `Bajo`, `Medio`, `Alto` y `Premium`.
+- Estados `COMPLETADO`, `EN_PROCESO`, `ENVIADO` y `CANCELADO`.
+- Clientes clasificados como `GOLD`, `SILVER`, `BRONZE` y `NEW`.
+- Clientes sin pedidos válidos.
+- Clientes registrados hace menos de 30 días.
+- Pedidos recientes, de 90 a 180 días y de más de 180 días para analizar riesgo de abandono.
+- Tabla `VENTAS` disponible para validaciones y laboratorios posteriores.
 
 ```sql
 -- ============================================================
--- CONFIGURACIÓN INICIAL - Lab 02-00-01
--- Ejecutar este bloque COMPLETO antes de comenzar
+-- 02_SETUP_DATOS_CASE_WHEN_SEGMENTACION
+-- Práctica 2: Clasificación de clientes y reglas de negocio
+-- Plataforma: Snowflake
+-- Schema: LAB_SQL_INTERMEDIO.VENTAS
 -- ============================================================
 
--- 1. Seleccionar el rol de trabajo
-USE ROLE LAB_ROLE;  -- Ajustar al rol asignado por el instructor
+USE WAREHOUSE COMPUTE_WH;
 
--- 2. Activar el warehouse de laboratorio (tamaño X-SMALL)
-USE WAREHOUSE LAB_WH;
+CREATE DATABASE IF NOT EXISTS LAB_SQL_INTERMEDIO;
+USE DATABASE LAB_SQL_INTERMEDIO;
 
--- 3. Seleccionar la base de datos y schema de práctica
+CREATE SCHEMA IF NOT EXISTS VENTAS;
+USE SCHEMA VENTAS;
+
+-- Este setup recrea las tablas del schema de práctica.
+-- Se incluyen columnas compatibles con la práctica 1 y con la práctica 2:
+--   CLIENTE_ID / ID_CLIENTE
+--   PEDIDO_ID  / ID_PEDIDO
+--   MONTO      / MONTO_TOTAL
+--
+-- Esto permite que los laboratorios puedan ejecutarse sin depender de
+-- nombres de columnas incompatibles entre prácticas.
+
+DROP TABLE IF EXISTS VENTAS;
+DROP TABLE IF EXISTS PEDIDOS;
+DROP TABLE IF EXISTS PRODUCTOS;
+DROP TABLE IF EXISTS CLIENTES;
+
+CREATE OR REPLACE TABLE CLIENTES (
+    ID_CLIENTE NUMBER(10,0) NOT NULL,
+    CLIENTE_ID NUMBER(10,0) NOT NULL,
+    NOMBRE VARCHAR(100) NOT NULL,
+    EMAIL VARCHAR(150),
+    CIUDAD VARCHAR(80) NOT NULL,
+    PAIS VARCHAR(80) NOT NULL,
+    SEGMENTO VARCHAR(40),
+    FECHA_REGISTRO DATE NOT NULL,
+    FECHA_ALTA DATE NOT NULL,
+    CONSTRAINT PK_CLIENTES PRIMARY KEY (ID_CLIENTE)
+);
+
+CREATE OR REPLACE TABLE PRODUCTOS (
+    PRODUCTO_ID NUMBER(10,0) NOT NULL,
+    NOMBRE VARCHAR(120) NOT NULL,
+    CATEGORIA VARCHAR(80) NOT NULL,
+    PRECIO_UNITARIO NUMBER(10,2) NOT NULL,
+    ACTIVO BOOLEAN DEFAULT TRUE,
+    CONSTRAINT PK_PRODUCTOS PRIMARY KEY (PRODUCTO_ID)
+);
+
+CREATE OR REPLACE TABLE PEDIDOS (
+    ID_PEDIDO NUMBER(10,0) NOT NULL,
+    PEDIDO_ID NUMBER(10,0) NOT NULL,
+    ID_CLIENTE NUMBER(10,0) NOT NULL,
+    CLIENTE_ID NUMBER(10,0) NOT NULL,
+    PRODUCTO_ID NUMBER(10,0) NOT NULL,
+    FECHA_PEDIDO DATE NOT NULL,
+    CANTIDAD NUMBER(10,0) NOT NULL,
+    MONTO_TOTAL NUMBER(12,2) NOT NULL,
+    MONTO NUMBER(12,2) NOT NULL,
+    ESTADO_PEDIDO VARCHAR(30) NOT NULL,
+    CANAL VARCHAR(40),
+    CONSTRAINT PK_PEDIDOS PRIMARY KEY (ID_PEDIDO)
+);
+
+INSERT INTO CLIENTES (
+    ID_CLIENTE, CLIENTE_ID, NOMBRE, EMAIL, CIUDAD, PAIS, SEGMENTO, FECHA_REGISTRO, FECHA_ALTA
+) VALUES
+    (1,  1,  'Ana Torres',        'ana.torres@techcommerce.com',        'CDMX',        'México', 'Retail',     DATEADD(day, -820, CURRENT_DATE()), DATEADD(day, -820, CURRENT_DATE())),
+    (2,  2,  'Luis Martínez',     'luis.martinez@techcommerce.com',     'CDMX',        'México', 'Retail',     DATEADD(day, -760, CURRENT_DATE()), DATEADD(day, -760, CURRENT_DATE())),
+    (3,  3,  'María López',       'maria.lopez@techcommerce.com',       'Guadalajara', 'México', 'PyME',       DATEADD(day, -430, CURRENT_DATE()), DATEADD(day, -430, CURRENT_DATE())),
+    (4,  4,  'Carlos Hernández',  'carlos.hernandez@techcommerce.com',  'Guadalajara', 'México', 'Enterprise', DATEADD(day, -390, CURRENT_DATE()), DATEADD(day, -390, CURRENT_DATE())),
+    (5,  5,  'Sofía Ramírez',     'sofia.ramirez@techcommerce.com',     'Monterrey',   'México', 'PyME',       DATEADD(day, -210, CURRENT_DATE()), DATEADD(day, -210, CURRENT_DATE())),
+    (6,  6,  'Jorge Castillo',    'jorge.castillo@techcommerce.com',    'Monterrey',   'México', 'Retail',     DATEADD(day, -500, CURRENT_DATE()), DATEADD(day, -500, CURRENT_DATE())),
+    (7,  7,  'Elena Flores',      'elena.flores@techcommerce.com',      'Puebla',      'México', 'Enterprise', DATEADD(day, -240, CURRENT_DATE()), DATEADD(day, -240, CURRENT_DATE())),
+    (8,  8,  'Diego Sánchez',     'diego.sanchez@techcommerce.com',     'Puebla',      'México', 'PyME',       DATEADD(day, -10,  CURRENT_DATE()), DATEADD(day, -10,  CURRENT_DATE())),
+    (9,  9,  'Valeria Cruz',      'valeria.cruz@techcommerce.com',      'Mérida',      'México', 'Enterprise', DATEADD(day, -650, CURRENT_DATE()), DATEADD(day, -650, CURRENT_DATE())),
+    (10, 10, 'Roberto Díaz',      'roberto.diaz@techcommerce.com',      'Mérida',      'México', 'Retail',     DATEADD(day, -15,  CURRENT_DATE()), DATEADD(day, -15,  CURRENT_DATE())),
+    (11, 11, 'Patricia Navarro',  'patricia.navarro@techcommerce.com',  'Querétaro',   'México', 'PyME',       DATEADD(day, -120, CURRENT_DATE()), DATEADD(day, -120, CURRENT_DATE())),
+    (12, 12, 'Fernando Rivas',    'fernando.rivas@techcommerce.com',    'Querétaro',   'México', 'Retail',     DATEADD(day, -300, CURRENT_DATE()), DATEADD(day, -300, CURRENT_DATE()));
+
+INSERT INTO PRODUCTOS (PRODUCTO_ID, NOMBRE, CATEGORIA, PRECIO_UNITARIO, ACTIVO) VALUES
+    (1,  'Laptop Pro 14',              'Electrónica',     1200.00, TRUE),
+    (2,  'Monitor 27 pulgadas',        'Electrónica',      350.00, TRUE),
+    (3,  'Teclado mecánico',           'Accesorios',       120.00, TRUE),
+    (4,  'Mouse inalámbrico',          'Accesorios',        80.00, TRUE),
+    (5,  'Silla ergonómica',           'Oficina',          420.00, TRUE),
+    (6,  'Escritorio ajustable',       'Oficina',          680.00, TRUE),
+    (7,  'Licencia BI anual',          'Software',         900.00, TRUE),
+    (8,  'Licencia CRM anual',         'Software',        1100.00, TRUE),
+    (9,  'Servidor compacto',          'Infraestructura', 1500.00, TRUE),
+    (10, 'NAS 8TB',                    'Infraestructura',  850.00, TRUE),
+    (11, 'Tablet Ejecutiva',           'Electrónica',      550.00, TRUE),
+    (12, 'Audífonos con cancelación',  'Accesorios',       220.00, TRUE);
+
+INSERT INTO PEDIDOS (
+    ID_PEDIDO, PEDIDO_ID, ID_CLIENTE, CLIENTE_ID, PRODUCTO_ID,
+    FECHA_PEDIDO, CANTIDAD, MONTO_TOTAL, MONTO, ESTADO_PEDIDO, CANAL
+) VALUES
+    -- Cliente 1: GOLD activo. Total válido = 5200, pedidos válidos = 5
+    (2001, 2001, 1, 1, 1,  DATEADD(day, -20, CURRENT_DATE()), 1, 1200.00, 1200.00, 'COMPLETADO', 'Web'),
+    (2002, 2002, 1, 1, 8,  DATEADD(day, -35, CURRENT_DATE()), 1, 1300.00, 1300.00, 'ENVIADO',    'Ejecutivo'),
+    (2003, 2003, 1, 1, 7,  DATEADD(day, -50, CURRENT_DATE()), 1,  800.00,  800.00, 'COMPLETADO', 'Web'),
+    (2004, 2004, 1, 1, 2,  DATEADD(day, -65, CURRENT_DATE()), 2,  900.00,  900.00, 'COMPLETADO', 'Marketplace'),
+    (2005, 2005, 1, 1, 6,  DATEADD(day, -75, CURRENT_DATE()), 1, 1000.00, 1000.00, 'EN_PROCESO', 'Ejecutivo'),
+
+    -- Cliente 2: GOLD con riesgo alto. Total válido = 5800, pedidos válidos = 5
+    (2006, 2006, 2, 2, 9,  DATEADD(day, -220, CURRENT_DATE()), 2, 3000.00, 3000.00, 'COMPLETADO', 'Ejecutivo'),
+    (2007, 2007, 2, 2, 1,  DATEADD(day, -230, CURRENT_DATE()), 1, 1000.00, 1000.00, 'COMPLETADO', 'Web'),
+    (2008, 2008, 2, 2, 10, DATEADD(day, -245, CURRENT_DATE()), 1,  700.00,  700.00, 'COMPLETADO', 'Marketplace'),
+    (2009, 2009, 2, 2, 5,  DATEADD(day, -260, CURRENT_DATE()), 1,  600.00,  600.00, 'ENVIADO',    'Web'),
+    (2010, 2010, 2, 2, 3,  DATEADD(day, -275, CURRENT_DATE()), 2,  500.00,  500.00, 'COMPLETADO', 'Web'),
+
+    -- Cliente 3: SILVER con riesgo medio. Total válido = 1700, pedidos válidos = 2
+    (2011, 2011, 3, 3, 7,  DATEADD(day, -120, CURRENT_DATE()), 1,  800.00,  800.00, 'COMPLETADO', 'Web'),
+    (2012, 2012, 3, 3, 8,  DATEADD(day, -135, CURRENT_DATE()), 1,  900.00,  900.00, 'COMPLETADO', 'Ejecutivo'),
+
+    -- Cliente 4: SILVER activo. Total válido = 2600, pedidos válidos = 3
+    (2013, 2013, 4, 4, 1,  DATEADD(day, -25, CURRENT_DATE()), 1, 1200.00, 1200.00, 'COMPLETADO', 'Ejecutivo'),
+    (2014, 2014, 4, 4, 7,  DATEADD(day, -60, CURRENT_DATE()), 1,  900.00,  900.00, 'ENVIADO',    'Web'),
+    (2015, 2015, 4, 4, 5,  DATEADD(day, -80, CURRENT_DATE()), 1,  500.00,  500.00, 'COMPLETADO', 'Marketplace'),
+
+    -- Cliente 5: BRONZE activo. Total válido = 150, pedidos válidos = 1
+    (2016, 2016, 5, 5, 4,  DATEADD(day, -15, CURRENT_DATE()), 1,  150.00,  150.00, 'COMPLETADO', 'Web'),
+
+    -- Cliente 6: BRONZE con riesgo alto. Total válido = 500, pedidos válidos = 1
+    (2017, 2017, 6, 6, 3,  DATEADD(day, -240, CURRENT_DATE()), 1,  500.00,  500.00, 'COMPLETADO', 'Web'),
+
+    -- Cliente 8: NEW por antigüedad menor a 30 días, aunque tenga compra válida.
+    (2018, 2018, 8, 8, 9,  DATEADD(day, -5, CURRENT_DATE()),  1, 3000.00, 3000.00, 'COMPLETADO', 'Ejecutivo'),
+    (2019, 2019, 8, 8, 4,  DATEADD(day, -3, CURRENT_DATE()),  1,  100.00,  100.00, 'EN_PROCESO', 'Web'),
+
+    -- Cliente 9: SILVER con riesgo alto. Total válido = 1800, pedidos válidos = 2
+    (2020, 2020, 9, 9, 10, DATEADD(day, -210, CURRENT_DATE()), 1,  850.00,  850.00, 'COMPLETADO', 'Ejecutivo'),
+    (2021, 2021, 9, 9, 6,  DATEADD(day, -195, CURRENT_DATE()), 1,  950.00,  950.00, 'COMPLETADO', 'Marketplace'),
+
+    -- Cliente 10: NEW. Solo pedido cancelado, no debe contar como compra válida.
+    (2022, 2022, 10, 10, 1, DATEADD(day, -8, CURRENT_DATE()), 1, 4000.00, 4000.00, 'CANCELADO', 'Web'),
+
+    -- Cliente 12: BRONZE con riesgo medio. Total válido = 750, pedidos válidos = 1
+    (2023, 2023, 12, 12, 2, DATEADD(day, -100, CURRENT_DATE()), 1,  750.00,  750.00, 'COMPLETADO', 'Marketplace');
+
+-- Tabla denormalizada de ventas para validaciones y laboratorios posteriores.
+CREATE OR REPLACE TABLE VENTAS AS
+SELECT
+    p.ID_PEDIDO AS ID_VENTA,
+    p.ID_PEDIDO,
+    p.ID_CLIENTE,
+    c.NOMBRE AS NOMBRE_CLIENTE,
+    c.CIUDAD,
+    c.PAIS,
+    p.PRODUCTO_ID,
+    pr.NOMBRE AS NOMBRE_PRODUCTO,
+    pr.CATEGORIA,
+    p.FECHA_PEDIDO AS FECHA_VENTA,
+    p.CANTIDAD,
+    p.MONTO_TOTAL,
+    p.ESTADO_PEDIDO,
+    p.CANAL
+FROM PEDIDOS p
+INNER JOIN CLIENTES c
+    ON p.ID_CLIENTE = c.ID_CLIENTE
+INNER JOIN PRODUCTOS pr
+    ON p.PRODUCTO_ID = pr.PRODUCTO_ID;
+
+-- Validación rápida del dataset.
+SELECT 'CLIENTES' AS TABLA, COUNT(*) AS FILAS FROM CLIENTES
+UNION ALL
+SELECT 'PRODUCTOS' AS TABLA, COUNT(*) AS FILAS FROM PRODUCTOS
+UNION ALL
+SELECT 'PEDIDOS' AS TABLA, COUNT(*) AS FILAS FROM PEDIDOS
+UNION ALL
+SELECT 'VENTAS' AS TABLA, COUNT(*) AS FILAS FROM VENTAS
+ORDER BY TABLA;
+
+-- Resultado esperado:
+-- CLIENTES  = 12
+-- PEDIDOS   = 23
+-- PRODUCTOS = 12
+-- VENTAS    = 23
+
+-- Validación de categorías de monto en pedidos válidos.
+SELECT
+    CASE
+        WHEN MONTO_TOTAL < 200  THEN 'Bajo'
+        WHEN MONTO_TOTAL < 1000 THEN 'Medio'
+        WHEN MONTO_TOTAL < 3000 THEN 'Alto'
+        ELSE 'Premium'
+    END AS CATEGORIA_MONTO,
+    COUNT(*) AS TOTAL_PEDIDOS
+FROM PEDIDOS
+WHERE ESTADO_PEDIDO != 'CANCELADO'
+GROUP BY CATEGORIA_MONTO
+ORDER BY
+    CASE CATEGORIA_MONTO
+        WHEN 'Bajo' THEN 1
+        WHEN 'Medio' THEN 2
+        WHEN 'Alto' THEN 3
+        WHEN 'Premium' THEN 4
+    END;
+
+-- Validación de segmentos esperados.
+WITH METRICAS_CLIENTE AS (
+    SELECT
+        c.ID_CLIENTE,
+        DATEDIFF('day', c.FECHA_REGISTRO, CURRENT_DATE()) AS DIAS_COMO_CLIENTE,
+        COUNT(p.ID_PEDIDO) AS TOTAL_PEDIDOS,
+        COALESCE(SUM(p.MONTO_TOTAL), 0) AS MONTO_TOTAL_GASTADO
+    FROM CLIENTES c
+    LEFT JOIN PEDIDOS p
+        ON c.ID_CLIENTE = p.ID_CLIENTE
+       AND p.ESTADO_PEDIDO != 'CANCELADO'
+    GROUP BY c.ID_CLIENTE, c.FECHA_REGISTRO
+)
+SELECT
+    CASE
+        WHEN TOTAL_PEDIDOS = 0 OR DIAS_COMO_CLIENTE < 30 THEN 'NEW'
+        WHEN MONTO_TOTAL_GASTADO >= 5000 AND TOTAL_PEDIDOS >= 5 THEN 'GOLD'
+        WHEN MONTO_TOTAL_GASTADO >= 1500 AND TOTAL_PEDIDOS >= 2 THEN 'SILVER'
+        WHEN TOTAL_PEDIDOS >= 1 THEN 'BRONZE'
+        ELSE 'NEW'
+    END AS SEGMENTO_CLIENTE,
+    COUNT(*) AS CANTIDAD_CLIENTES
+FROM METRICAS_CLIENTE
+GROUP BY SEGMENTO_CLIENTE
+ORDER BY
+    CASE SEGMENTO_CLIENTE
+        WHEN 'GOLD' THEN 1
+        WHEN 'SILVER' THEN 2
+        WHEN 'BRONZE' THEN 3
+        WHEN 'NEW' THEN 4
+    END;
+```
+
+### Paso 0.2 — Crear el folder y script del laboratorio
+
+1. En el workspace **`SNOWLABS-INT`**, da clic en **+ Add new**.
+2. Crea o usa el folder **`SCRIPT-LABS`**.
+3. Dentro de **`SCRIPT-LABS`**, crea un archivo de tipo **SQL**.
+4. Nómbralo **`02_LAB_CASE_WHEN_SEGMENTACION`**.
+5. Usa este archivo para ejecutar los ejercicios de la práctica.
+6. No pegues aquí el script completo de carga; úsalo solo para las consultas del laboratorio.
+
+### Paso 0.3 — Confirmar contexto de trabajo
+
+Dentro del archivo **`02_LAB_CASE_WHEN_SEGMENTACION`**, ejecuta:
+
+```sql
+USE WAREHOUSE COMPUTE_WH;
 USE DATABASE LAB_SQL_INTERMEDIO;
 USE SCHEMA VENTAS;
 
--- 4. Verificar que las tablas necesarias existen y tienen datos
-SELECT 'CLIENTES'  AS tabla, COUNT(*) AS total_filas FROM CLIENTES
-UNION ALL
-SELECT 'PEDIDOS'   AS tabla, COUNT(*) AS total_filas FROM PEDIDOS
-UNION ALL
-SELECT 'VENTAS'    AS tabla, COUNT(*) AS total_filas FROM VENTAS
-UNION ALL
-SELECT 'PRODUCTOS' AS tabla, COUNT(*) AS total_filas FROM PRODUCTOS
-ORDER BY tabla;
+SHOW TABLES;
 ```
 
-**Resultado esperado de la verificación:**
+**Resultado esperado:** deben aparecer al menos las tablas:
 
-| TABLA | TOTAL_FILAS |
+| Tabla | Uso en la práctica |
 |---|---|
-| CLIENTES | > 0 |
-| PEDIDOS | > 0 |
-| PRODUCTOS | > 0 |
-| VENTAS | > 0 |
+| `CLIENTES` | Maestro de clientes con ciudad, país, email y fecha de registro |
+| `PEDIDOS` | Transacciones por cliente con monto, fecha y estado |
+| `PRODUCTOS` | Catálogo de productos |
+| `VENTAS` | Tabla denormalizada de ventas para validaciones y futuros laboratorios |
 
-> ⚠️ **Si alguna tabla muestra 0 filas o aparece un error de objeto no encontrado**, detente y notifica al instructor. El script `00_setup_laboratorios.sql` debe ejecutarse nuevamente antes de continuar.
+### Paso 0.4 — Validar volumen mínimo de datos
 
----
-
-## 6. Desarrollo del Laboratorio
-
-### Contexto del Negocio
-
-La empresa **TechCommerce S.A.** necesita implementar un programa de lealtad para sus clientes. El equipo de marketing ha definido las siguientes reglas de segmentación:
-
-| Segmento | Criterio principal |
-|---|---|
-| **GOLD** | Clientes con alto valor de compra y alta frecuencia |
-| **SILVER** | Clientes con valor o frecuencia moderados |
-| **BRONZE** | Clientes con compras bajas o poco frecuentes |
-| **NEW** | Clientes sin historial de compras suficiente |
-
-Tu trabajo como analista SQL es implementar estas reglas en Snowflake y generar los reportes que el equipo de marketing necesita para lanzar el programa.
-
----
-
-### Paso 1: Exploración de las tablas base
-
-**Objetivo:** Familiarizarte con la estructura y distribución de datos en `CLIENTES` y `PEDIDOS` antes de construir las clasificaciones.
-
-#### Instrucciones
-
-**1.1** Examina la estructura de la tabla `CLIENTES`:
+Ejecuta:
 
 ```sql
--- Estructura de la tabla CLIENTES
+SELECT 'CLIENTES' AS TABLA, COUNT(*) AS FILAS FROM CLIENTES
+UNION ALL
+SELECT 'PRODUCTOS' AS TABLA, COUNT(*) AS FILAS FROM PRODUCTOS
+UNION ALL
+SELECT 'PEDIDOS' AS TABLA, COUNT(*) AS FILAS FROM PEDIDOS
+UNION ALL
+SELECT 'VENTAS' AS TABLA, COUNT(*) AS FILAS FROM VENTAS
+ORDER BY TABLA;
+```
+
+**Resultado esperado:**
+
+| TABLA | FILAS |
+|---|---:|
+| CLIENTES | 12 |
+| PEDIDOS | 23 |
+| PRODUCTOS | 12 |
+| VENTAS | 23 |
+
+### Paso 0.5 — Validar que existen estados de pedido
+
+```sql
+SELECT
+    ESTADO_PEDIDO,
+    COUNT(*) AS TOTAL_PEDIDOS
+FROM PEDIDOS
+GROUP BY ESTADO_PEDIDO
+ORDER BY ESTADO_PEDIDO;
+```
+
+**Resultado esperado:** deben existir registros para `CANCELADO`, `COMPLETADO`, `EN_PROCESO` y `ENVIADO`.
+
+### Paso 0.6 — Validar que existen pedidos en todas las categorías de monto
+
+```sql
+SELECT
+    CASE
+        WHEN MONTO_TOTAL < 200  THEN 'Bajo'
+        WHEN MONTO_TOTAL < 1000 THEN 'Medio'
+        WHEN MONTO_TOTAL < 3000 THEN 'Alto'
+        ELSE 'Premium'
+    END AS CATEGORIA_MONTO,
+    COUNT(*) AS TOTAL_PEDIDOS
+FROM PEDIDOS
+WHERE ESTADO_PEDIDO != 'CANCELADO'
+GROUP BY CATEGORIA_MONTO
+ORDER BY
+    CASE CATEGORIA_MONTO
+        WHEN 'Bajo' THEN 1
+        WHEN 'Medio' THEN 2
+        WHEN 'Alto' THEN 3
+        WHEN 'Premium' THEN 4
+    END;
+```
+
+**Resultado esperado:** deben aparecer exactamente 4 categorías: `Bajo`, `Medio`, `Alto` y `Premium`.
+
+---
+
+## Ejercicios Paso a Paso
+
+---
+
+### Ejercicio 1 — Exploración de tablas base
+
+**Objetivo:** Familiarizarte con la estructura de `CLIENTES`, `PEDIDOS`, `PRODUCTOS` y `VENTAS` antes de construir las clasificaciones.
+
+#### Paso 1.1 — Explorar estructura de tablas
+
+```sql
 DESC TABLE CLIENTES;
+DESC TABLE PEDIDOS;
+DESC TABLE PRODUCTOS;
+DESC TABLE VENTAS;
 ```
 
-**1.2** Revisa una muestra de los datos de clientes:
+#### Paso 1.2 — Revisar una muestra de clientes
 
 ```sql
--- Muestra de datos de clientes
 SELECT
     ID_CLIENTE,
     NOMBRE,
@@ -161,13 +487,13 @@ SELECT
     CIUDAD,
     PAIS
 FROM CLIENTES
+ORDER BY ID_CLIENTE
 LIMIT 10;
 ```
 
-**1.3** Examina la estructura y una muestra de `PEDIDOS`:
+#### Paso 1.3 — Revisar una muestra de pedidos
 
 ```sql
--- Muestra de datos de pedidos con métricas básicas
 SELECT
     ID_PEDIDO,
     ID_CLIENTE,
@@ -175,42 +501,43 @@ SELECT
     MONTO_TOTAL,
     ESTADO_PEDIDO
 FROM PEDIDOS
+ORDER BY ID_PEDIDO
 LIMIT 10;
 ```
 
-**1.4** Calcula estadísticas de distribución del monto de pedidos para entender los rangos de datos antes de definir los umbrales de clasificación:
+#### Paso 1.4 — Calcula estadísticas de distribución del monto de pedidos para entender los rangos de datos antes de definir los umbrales de clasificación:
 
 ```sql
--- Estadísticas descriptivas de montos de pedidos
 SELECT
-    COUNT(*)                        AS total_pedidos,
-    ROUND(MIN(MONTO_TOTAL), 2)      AS monto_minimo,
-    ROUND(MAX(MONTO_TOTAL), 2)      AS monto_maximo,
-    ROUND(AVG(MONTO_TOTAL), 2)      AS monto_promedio,
-    ROUND(MEDIAN(MONTO_TOTAL), 2)   AS monto_mediana,
-    COUNT(DISTINCT ID_CLIENTE)      AS clientes_con_pedidos
+    COUNT(*)                       AS TOTAL_PEDIDOS_VALIDOS,
+    ROUND(MIN(MONTO_TOTAL), 2)     AS MONTO_MINIMO,
+    ROUND(MAX(MONTO_TOTAL), 2)     AS MONTO_MAXIMO,
+    ROUND(AVG(MONTO_TOTAL), 2)     AS MONTO_PROMEDIO,
+    ROUND(MEDIAN(MONTO_TOTAL), 2)  AS MONTO_MEDIANA,
+    COUNT(DISTINCT ID_CLIENTE)     AS CLIENTES_CON_PEDIDOS_VALIDOS
 FROM PEDIDOS
 WHERE ESTADO_PEDIDO != 'CANCELADO';
 ```
 
-**1.5** Calcula la distribución de frecuencia de compras por cliente:
+#### Paso 1.5 — Calcular frecuencia de compras por cliente
 
 ```sql
--- Distribución de frecuencia: ¿cuántos pedidos tiene cada cliente?
 SELECT
-    pedidos_por_cliente,
-    COUNT(*) AS cantidad_clientes
+    PEDIDOS_POR_CLIENTE,
+    COUNT(*) AS CANTIDAD_CLIENTES
 FROM (
     SELECT
         ID_CLIENTE,
-        COUNT(*) AS pedidos_por_cliente
+        COUNT(*) AS PEDIDOS_POR_CLIENTE
     FROM PEDIDOS
     WHERE ESTADO_PEDIDO != 'CANCELADO'
     GROUP BY ID_CLIENTE
-) sub
-GROUP BY pedidos_por_cliente
-ORDER BY pedidos_por_cliente;
+) SUB
+GROUP BY PEDIDOS_POR_CLIENTE
+ORDER BY PEDIDOS_POR_CLIENTE;
 ```
+
+**Resultado esperado:** observarás clientes con 1, 2, 3 y 5 pedidos válidos. También habrá clientes sin pedidos válidos, que se analizarán más adelante con `LEFT JOIN`.
 
 #### Resultado esperado
 
@@ -232,13 +559,15 @@ Anota los valores obtenidos en la siguiente tabla de referencia (los usarás par
 
 ---
 
-### Paso 2: Clasificación simple con CASE WHEN — Segmentación por monto
+### Ejercicio 2 — Clasificación simple con `CASE WHEN` - Segmentación por monto
 
-**Objetivo:** Implementar una primera clasificación de pedidos usando `CASE WHEN` en forma buscada, asignando una categoría de valor a cada transacción.
+**Objetivo:** Implementar una clasificación de pedidos usando `CASE WHEN` en forma buscada y simple.
 
-#### Instrucciones
+#### Paso 2.1 — Clasificar pedidos por monto
 
-**2.1** Crea una clasificación simple de pedidos por monto usando `CASE WHEN` en forma buscada. Ajusta los umbrales según los valores que observaste en el Paso 1 si el instructor lo indica; de lo contrario, usa los valores del enunciado:
+Pregunta de negocio:
+
+- **"¿Qué categoría de valor tiene cada pedido válido?"**
 
 ```sql
 -- Clasificación de pedidos por monto (CASE WHEN forma buscada)
@@ -249,92 +578,92 @@ SELECT
     FECHA_PEDIDO,
     MONTO_TOTAL,
     CASE
-        WHEN MONTO_TOTAL < 200              THEN 'Bajo'
-        WHEN MONTO_TOTAL < 1000             THEN 'Medio'
-        WHEN MONTO_TOTAL < 3000             THEN 'Alto'
-        ELSE                                     'Premium'
-    END AS categoria_monto
+        WHEN MONTO_TOTAL < 200  THEN 'Bajo'
+        WHEN MONTO_TOTAL < 1000 THEN 'Medio'
+        WHEN MONTO_TOTAL < 3000 THEN 'Alto'
+        ELSE 'Premium'
+    END AS CATEGORIA_MONTO
 FROM PEDIDOS
 WHERE ESTADO_PEDIDO != 'CANCELADO'
 ORDER BY MONTO_TOTAL DESC;
 ```
 
-**2.2** Verifica la distribución de categorías para confirmar que los umbrales son razonables:
+#### Paso 2.2 — Verifica la distribución de categorías para confirmar que los umbrales son razonables:
 
 ```sql
--- Distribución de pedidos por categoría de monto
 SELECT
     CASE
-        WHEN MONTO_TOTAL < 200              THEN 'Bajo'
-        WHEN MONTO_TOTAL < 1000             THEN 'Medio'
-        WHEN MONTO_TOTAL < 3000             THEN 'Alto'
-        ELSE                                     'Premium'
-    END                                     AS categoria_monto,
-    COUNT(*)                                AS cantidad_pedidos,
-    ROUND(SUM(MONTO_TOTAL), 2)              AS monto_total_segmento,
-    ROUND(AVG(MONTO_TOTAL), 2)              AS monto_promedio
+        WHEN MONTO_TOTAL < 200  THEN 'Bajo'
+        WHEN MONTO_TOTAL < 1000 THEN 'Medio'
+        WHEN MONTO_TOTAL < 3000 THEN 'Alto'
+        ELSE 'Premium'
+    END AS CATEGORIA_MONTO,
+    COUNT(*) AS CANTIDAD_PEDIDOS,
+    ROUND(SUM(MONTO_TOTAL), 2) AS MONTO_TOTAL_SEGMENTO,
+    ROUND(AVG(MONTO_TOTAL), 2) AS MONTO_PROMEDIO
 FROM PEDIDOS
 WHERE ESTADO_PEDIDO != 'CANCELADO'
 GROUP BY
     CASE
-        WHEN MONTO_TOTAL < 200              THEN 'Bajo'
-        WHEN MONTO_TOTAL < 1000             THEN 'Medio'
-        WHEN MONTO_TOTAL < 3000             THEN 'Alto'
-        ELSE                                     'Premium'
+        WHEN MONTO_TOTAL < 200  THEN 'Bajo'
+        WHEN MONTO_TOTAL < 1000 THEN 'Medio'
+        WHEN MONTO_TOTAL < 3000 THEN 'Alto'
+        ELSE 'Premium'
     END
-ORDER BY monto_promedio DESC;
+ORDER BY MONTO_PROMEDIO DESC;
 ```
 
-**2.3** Ahora practica la **forma simple** de `CASE WHEN` para traducir el código de estado de pedido a una descripción legible:
+**Resultado esperado:** deben aparecer exactamente 4 categorías: `Premium`, `Alto`, `Medio` y `Bajo`.
+
+#### Paso 2.3 — Traducir estados con `CASE WHEN` forma simple
+
+Pregunta de negocio:
+
+- **"¿Cómo mostrar los estados técnicos del pedido con una descripción amigable?"**
 
 ```sql
--- CASE WHEN forma simple: traducción de códigos de estado
 SELECT
     ID_PEDIDO,
     ESTADO_PEDIDO,
     CASE ESTADO_PEDIDO
-        WHEN 'COMPLETADO'   THEN 'Entregado al cliente'
-        WHEN 'EN_PROCESO'   THEN 'En preparación'
-        WHEN 'ENVIADO'      THEN 'En camino'
-        WHEN 'CANCELADO'    THEN 'Cancelado por cliente o sistema'
-        ELSE                     'Estado desconocido: ' || ESTADO_PEDIDO
-    END AS descripcion_estado,
+        WHEN 'COMPLETADO' THEN 'Entregado al cliente'
+        WHEN 'EN_PROCESO' THEN 'En preparación'
+        WHEN 'ENVIADO'    THEN 'En camino'
+        WHEN 'CANCELADO'  THEN 'Cancelado por cliente o sistema'
+        ELSE 'Estado desconocido: ' || ESTADO_PEDIDO
+    END AS DESCRIPCION_ESTADO,
     MONTO_TOTAL
 FROM PEDIDOS
+ORDER BY ID_PEDIDO
 LIMIT 20;
 ```
 
 > 📌 **Observa el patrón `ELSE 'Estado desconocido: ' || ESTADO_PEDIDO`**: concatena el valor original con un prefijo descriptivo. Esto es útil para detectar valores inesperados sin perder información.
 
-**2.4** Practica `IFF()`, la alternativa simplificada de Snowflake para clasificaciones de dos ramas:
+#### Paso 2.4 — Comparar `IFF()` contra `CASE WHEN`
 
 ```sql
 -- IFF() como alternativa a CASE WHEN de dos ramas (exclusivo de Snowflake)
 -- Sintaxis: IFF(condición, valor_si_verdadero, valor_si_falso)
+
 SELECT
     ID_PEDIDO,
     ID_CLIENTE,
     MONTO_TOTAL,
-    IFF(MONTO_TOTAL >= 1000, 'Alto valor', 'Valor estándar') AS clasificacion_iff,
-    -- Equivalente con CASE WHEN para comparación:
+    IFF(MONTO_TOTAL >= 1000, 'Alto valor', 'Valor estándar') AS CLASIFICACION_IFF,
     CASE
         WHEN MONTO_TOTAL >= 1000 THEN 'Alto valor'
-        ELSE                          'Valor estándar'
-    END AS clasificacion_case
+        ELSE 'Valor estándar'
+    END AS CLASIFICACION_CASE
 FROM PEDIDOS
 WHERE ESTADO_PEDIDO != 'CANCELADO'
+ORDER BY ID_PEDIDO
 LIMIT 15;
 ```
 
 > ⚠️ **Nota sobre portabilidad:** `IFF()` es una función exclusiva de Snowflake. No existe en PostgreSQL, MySQL ni SQL Server. Úsala cuando la simplicidad del código sea prioritaria, pero prefiere `CASE WHEN` cuando necesites portabilidad entre motores SQL.
 
-#### Resultado esperado
-
-- La consulta 2.1 debe mostrar cada pedido con su columna `categoria_monto` asignada correctamente.
-- La consulta 2.2 debe mostrar exactamente 4 filas (una por categoría), con sus conteos y montos.
-- Las columnas `clasificacion_iff` y `clasificacion_case` en la consulta 2.4 deben mostrar valores idénticos.
-
-#### Verificación
+**Verificación:**
 
 ```sql
 -- Verificación: confirmar que no hay pedidos sin clasificar (NULL en categoria_monto)
@@ -351,79 +680,72 @@ WHERE ESTADO_PEDIDO != 'CANCELADO'
 -- Resultado esperado: 0
 ```
 
----
-
-### Paso 3: Construcción de métricas por cliente — Base para la segmentación
-
-**Objetivo:** Calcular las métricas agregadas por cliente (monto total, frecuencia de compra, antigüedad) que servirán como insumo para la clasificación multinivel del Paso 4.
-
-#### Instrucciones
-
-**3.1** Crea una CTE que calcule las métricas base de cada cliente. Este será el fundamento de toda la segmentación posterior:
-
-```sql
--- Métricas base por cliente: monto total, frecuencia y antigüedad
-WITH metricas_cliente AS (
-    SELECT
-        c.ID_CLIENTE,
-        c.NOMBRE,
-        c.FECHA_REGISTRO,
-        -- Antigüedad en días desde el registro
-        DATEDIFF('day', c.FECHA_REGISTRO, CURRENT_DATE())    AS dias_como_cliente,
-        -- Cantidad de pedidos completados
-        COUNT(p.ID_PEDIDO)                                    AS total_pedidos,
-        -- Monto total gastado (excluyendo cancelados)
-        ROUND(SUM(p.MONTO_TOTAL), 2)                         AS monto_total_gastado,
-        -- Monto promedio por pedido
-        ROUND(AVG(p.MONTO_TOTAL), 2)                         AS monto_promedio_pedido,
-        -- Fecha del último pedido
-        MAX(p.FECHA_PEDIDO)                                   AS fecha_ultimo_pedido
-    FROM CLIENTES c
-    LEFT JOIN PEDIDOS p
-           ON c.ID_CLIENTE = p.ID_CLIENTE
-          AND p.ESTADO_PEDIDO != 'CANCELADO'
-    GROUP BY
-        c.ID_CLIENTE,
-        c.NOMBRE,
-        c.FECHA_REGISTRO
-)
-SELECT *
-FROM metricas_cliente
-ORDER BY monto_total_gastado DESC NULLS LAST
-LIMIT 20;
-```
-
-> 📌 **Nota sobre `LEFT JOIN`:** Usamos `LEFT JOIN` para incluir también a los clientes que aún no tienen pedidos (o cuyo único pedido fue cancelado). Aparecerán con `total_pedidos = 0` y `monto_total_gastado = NULL`. El `CASE WHEN` del siguiente paso manejará estos casos.
-
-**3.2** Verifica cuántos clientes tienen métricas nulas (sin pedidos válidos):
-
-```sql
--- Clientes sin pedidos válidos
-WITH metricas_cliente AS (
-    SELECT
-        c.ID_CLIENTE,
-        COUNT(p.ID_PEDIDO)             AS total_pedidos,
-        SUM(p.MONTO_TOTAL)             AS monto_total_gastado
-    FROM CLIENTES c
-    LEFT JOIN PEDIDOS p
-           ON c.ID_CLIENTE = p.ID_CLIENTE
-          AND p.ESTADO_PEDIDO != 'CANCELADO'
-    GROUP BY c.ID_CLIENTE
-)
-SELECT
-    COUNT(*)                                          AS total_clientes,
-    COUNT(CASE WHEN total_pedidos = 0
-               THEN 1 END)                            AS clientes_sin_pedidos,
-    COUNT(CASE WHEN total_pedidos > 0
-               THEN 1 END)                            AS clientes_con_pedidos
-FROM metricas_cliente;
-```
+**Resultado esperado:** `PEDIDOS_SIN_CLASIFICAR = 0`.
 
 #### Resultado esperado
 
-- La consulta 3.1 muestra una fila por cliente con sus métricas calculadas.
-- Los clientes sin pedidos aparecen con `total_pedidos = 0` y `monto_total_gastado = NULL`.
-- La consulta 3.2 muestra el desglose entre clientes con y sin historial de compras.
+- La consulta 2.1 debe mostrar cada pedido con su columna `categoria_monto` asignada correctamente.
+- La consulta 2.2 debe mostrar exactamente 4 filas (una por categoría), con sus conteos y montos.
+- Las columnas `clasificacion_iff` y `clasificacion_case` en la consulta 2.4 deben mostrar valores idénticos.
+
+---
+
+### Ejercicio 3 — Construcción de métricas base por cliente
+
+**Objetivo:** Calcular las métricas agregadas por cliente que servirán como base para la segmentación multinivel del Paso 4.
+
+#### Paso 3.1 — Crea una CTE que calcule las métricas base de cada cliente. Este será el fundamento de toda la segmentación posterior:
+
+```sql
+-- Métricas base por cliente: monto total, frecuencia y antigüedad
+WITH METRICAS_CLIENTE AS (
+    SELECT
+        C.ID_CLIENTE,
+        C.NOMBRE,
+        C.FECHA_REGISTRO,
+        DATEDIFF('day', C.FECHA_REGISTRO, CURRENT_DATE()) AS DIAS_COMO_CLIENTE,
+        COUNT(P.ID_PEDIDO) AS TOTAL_PEDIDOS,
+        ROUND(SUM(P.MONTO_TOTAL), 2) AS MONTO_TOTAL_GASTADO,
+        ROUND(AVG(P.MONTO_TOTAL), 2) AS MONTO_PROMEDIO_PEDIDO,
+        MAX(P.FECHA_PEDIDO) AS FECHA_ULTIMO_PEDIDO
+    FROM CLIENTES C
+    LEFT JOIN PEDIDOS P
+        ON C.ID_CLIENTE = P.ID_CLIENTE
+       AND P.ESTADO_PEDIDO != 'CANCELADO'
+    GROUP BY
+        C.ID_CLIENTE,
+        C.NOMBRE,
+        C.FECHA_REGISTRO
+)
+SELECT *
+FROM METRICAS_CLIENTE
+ORDER BY MONTO_TOTAL_GASTADO DESC NULLS LAST;
+```
+
+> Nota: `LEFT JOIN` permite incluir clientes sin pedidos válidos. Para esos clientes, `MONTO_TOTAL_GASTADO` aparecerá como `NULL`. En los siguientes ejercicios se usará `COALESCE` para convertir esos valores a cero.
+
+#### Paso 3.2 — Identificar clientes sin pedidos válidos
+
+```sql
+WITH METRICAS_CLIENTE AS (
+    SELECT
+        C.ID_CLIENTE,
+        COUNT(P.ID_PEDIDO) AS TOTAL_PEDIDOS,
+        SUM(P.MONTO_TOTAL) AS MONTO_TOTAL_GASTADO
+    FROM CLIENTES C
+    LEFT JOIN PEDIDOS P
+        ON C.ID_CLIENTE = P.ID_CLIENTE
+       AND P.ESTADO_PEDIDO != 'CANCELADO'
+    GROUP BY C.ID_CLIENTE
+)
+SELECT
+    COUNT(*) AS TOTAL_CLIENTES,
+    COUNT(CASE WHEN TOTAL_PEDIDOS = 0 THEN 1 END) AS CLIENTES_SIN_PEDIDOS_VALIDOS,
+    COUNT(CASE WHEN TOTAL_PEDIDOS > 0 THEN 1 END) AS CLIENTES_CON_PEDIDOS_VALIDOS
+FROM METRICAS_CLIENTE;
+```
+
+**Resultado esperado:** El total debe ser `12` clientes. Debe haber clientes con pedidos válidos y clientes sin pedidos válidos.
 
 #### Verificación
 
@@ -435,194 +757,217 @@ SELECT COUNT(*) AS total_en_tabla FROM CLIENTES;
 -- Compara este número con total_clientes de la consulta 3.2
 ```
 
+#### Resultado esperado
+
+- La consulta 3.1 muestra una fila por cliente con sus métricas calculadas.
+- Los clientes sin pedidos aparecen con `total_pedidos = 0` y `monto_total_gastado = NULL`.
+- La consulta 3.2 muestra el desglose entre clientes con y sin historial de compras.
+
 ---
 
-### Paso 4: Clasificación multinivel — Sistema de segmentación GOLD / SILVER / BRONZE
+### Ejercicio 4 — Clasificación multinivel GOLD / SILVER / BRONZE / NEW
 
-**Objetivo:** Implementar la clasificación principal del laboratorio combinando múltiples condiciones (`AND`, `BETWEEN`, comparaciones de frecuencia y antigüedad) en un `CASE WHEN` de múltiples niveles.
+**Objetivo:** Implementar una segmentación de clientes combinando monto total, frecuencia y antigüedad.
 
-#### Instrucciones
-
-**4.1** Implementa la clasificación completa de tres niveles. Las reglas de negocio son:
+#### Reglas de negocio
 
 | Segmento | Regla |
 |---|---|
-| **GOLD** | Monto total ≥ 5,000 **Y** total de pedidos ≥ 5 |
-| **SILVER** | Monto total ≥ 1,500 **Y** total de pedidos ≥ 2 (no clasificados como GOLD) |
-| **BRONZE** | Tiene al menos 1 pedido (no clasificado en niveles superiores) |
-| **NEW** | Sin pedidos válidos o cliente registrado hace menos de 30 días |
+| `GOLD` | Monto total válido >= 5000 y total de pedidos válidos >= 5 |
+| `SILVER` | Monto total válido >= 1500 y total de pedidos válidos >= 2 |
+| `BRONZE` | Tiene al menos 1 pedido válido, pero no cumple reglas superiores |
+| `NEW` | Sin pedidos válidos o cliente registrado hace menos de 30 días |
+
+> Importante: el orden del `CASE WHEN` es crítico. Snowflake evalúa de arriba hacia abajo y devuelve el resultado de la primera condición verdadera.
+
+#### Paso 4.1 — Implementar clasificación principal
 
 ```sql
--- Clasificación multinivel: GOLD / SILVER / BRONZE / NEW
-WITH metricas_cliente AS (
+WITH METRICAS_CLIENTE AS (
     SELECT
-        c.ID_CLIENTE,
-        c.NOMBRE,
-        c.FECHA_REGISTRO,
-        DATEDIFF('day', c.FECHA_REGISTRO, CURRENT_DATE())    AS dias_como_cliente,
-        COUNT(p.ID_PEDIDO)                                    AS total_pedidos,
-        COALESCE(SUM(p.MONTO_TOTAL), 0)                      AS monto_total_gastado,
-        COALESCE(AVG(p.MONTO_TOTAL), 0)                      AS monto_promedio_pedido,
-        MAX(p.FECHA_PEDIDO)                                   AS fecha_ultimo_pedido
-    FROM CLIENTES c
-    LEFT JOIN PEDIDOS p
-           ON c.ID_CLIENTE = p.ID_CLIENTE
-          AND p.ESTADO_PEDIDO != 'CANCELADO'
+        C.ID_CLIENTE,
+        C.NOMBRE,
+        C.FECHA_REGISTRO,
+        DATEDIFF('day', C.FECHA_REGISTRO, CURRENT_DATE()) AS DIAS_COMO_CLIENTE,
+        COUNT(P.ID_PEDIDO) AS TOTAL_PEDIDOS,
+        COALESCE(SUM(P.MONTO_TOTAL), 0) AS MONTO_TOTAL_GASTADO,
+        COALESCE(AVG(P.MONTO_TOTAL), 0) AS MONTO_PROMEDIO_PEDIDO,
+        MAX(P.FECHA_PEDIDO) AS FECHA_ULTIMO_PEDIDO
+    FROM CLIENTES C
+    LEFT JOIN PEDIDOS P
+        ON C.ID_CLIENTE = P.ID_CLIENTE
+       AND P.ESTADO_PEDIDO != 'CANCELADO'
     GROUP BY
-        c.ID_CLIENTE,
-        c.NOMBRE,
-        c.FECHA_REGISTRO
+        C.ID_CLIENTE,
+        C.NOMBRE,
+        C.FECHA_REGISTRO
 ),
-clientes_segmentados AS (
+CLIENTES_SEGMENTADOS AS (
     SELECT
         ID_CLIENTE,
         NOMBRE,
         FECHA_REGISTRO,
-        dias_como_cliente,
-        total_pedidos,
-        monto_total_gastado,
-        monto_promedio_pedido,
-        fecha_ultimo_pedido,
-        -- Clasificación multinivel con CASE WHEN
+        DIAS_COMO_CLIENTE,
+        TOTAL_PEDIDOS,
+        MONTO_TOTAL_GASTADO,
+        MONTO_PROMEDIO_PEDIDO,
+        FECHA_ULTIMO_PEDIDO,
         CASE
-            -- Segmento NEW: sin pedidos o cliente muy reciente
-            WHEN total_pedidos = 0
-              OR dias_como_cliente < 30                       THEN 'NEW'
-            -- Segmento GOLD: alto valor Y alta frecuencia
-            WHEN monto_total_gastado >= 5000
-             AND total_pedidos >= 5                           THEN 'GOLD'
-            -- Segmento SILVER: valor medio O frecuencia moderada
-            WHEN monto_total_gastado >= 1500
-             AND total_pedidos >= 2                           THEN 'SILVER'
-            -- Segmento BRONZE: tiene al menos un pedido
-            WHEN total_pedidos >= 1                           THEN 'BRONZE'
-            -- Fallback de seguridad
-            ELSE                                                   'NEW'
-        END AS segmento_cliente
-    FROM metricas_cliente
+            WHEN TOTAL_PEDIDOS = 0 OR DIAS_COMO_CLIENTE < 30 THEN 'NEW'
+            WHEN MONTO_TOTAL_GASTADO >= 5000 AND TOTAL_PEDIDOS >= 5 THEN 'GOLD'
+            WHEN MONTO_TOTAL_GASTADO >= 1500 AND TOTAL_PEDIDOS >= 2 THEN 'SILVER'
+            WHEN TOTAL_PEDIDOS >= 1 THEN 'BRONZE'
+            ELSE 'NEW'
+        END AS SEGMENTO_CLIENTE
+    FROM METRICAS_CLIENTE
 )
 SELECT
     ID_CLIENTE,
     NOMBRE,
-    segmento_cliente,
-    total_pedidos,
-    monto_total_gastado,
-    monto_promedio_pedido,
-    dias_como_cliente,
-    fecha_ultimo_pedido
-FROM clientes_segmentados
+    SEGMENTO_CLIENTE,
+    TOTAL_PEDIDOS,
+    ROUND(MONTO_TOTAL_GASTADO, 2) AS MONTO_TOTAL_GASTADO,
+    ROUND(MONTO_PROMEDIO_PEDIDO, 2) AS MONTO_PROMEDIO_PEDIDO,
+    DIAS_COMO_CLIENTE,
+    FECHA_ULTIMO_PEDIDO
+FROM CLIENTES_SEGMENTADOS
 ORDER BY
-    CASE segmento_cliente
-        WHEN 'GOLD'   THEN 1
+    CASE SEGMENTO_CLIENTE
+        WHEN 'GOLD' THEN 1
         WHEN 'SILVER' THEN 2
         WHEN 'BRONZE' THEN 3
-        WHEN 'NEW'    THEN 4
+        WHEN 'NEW' THEN 4
     END,
-    monto_total_gastado DESC;
+    MONTO_TOTAL_GASTADO DESC;
 ```
 
 > 📌 **Observa el `ORDER BY` con `CASE WHEN`:** Usamos `CASE WHEN` dentro del `ORDER BY` para controlar el orden de los segmentos (GOLD primero, luego SILVER, etc.). Esta es una técnica muy útil para presentar resultados en un orden lógico de negocio en lugar de orden alfabético.
 
-**4.2** Agrega una columna adicional que clasifique también la **antigüedad del cliente** como una segunda dimensión de análisis:
+#### Paso 4.2 — Agrega una columna adicional que clasifique también la antigüedad del cliente como una segunda dimensión de análisis:
 
 ```sql
--- Clasificación enriquecida: segmento de valor + segmento de antigüedad
-WITH metricas_cliente AS (
+WITH METRICAS_CLIENTE AS (
     SELECT
-        c.ID_CLIENTE,
-        c.NOMBRE,
-        c.FECHA_REGISTRO,
-        DATEDIFF('day', c.FECHA_REGISTRO, CURRENT_DATE())    AS dias_como_cliente,
-        COUNT(p.ID_PEDIDO)                                    AS total_pedidos,
-        COALESCE(SUM(p.MONTO_TOTAL), 0)                      AS monto_total_gastado,
-        COALESCE(AVG(p.MONTO_TOTAL), 0)                      AS monto_promedio_pedido
-    FROM CLIENTES c
-    LEFT JOIN PEDIDOS p
-           ON c.ID_CLIENTE = p.ID_CLIENTE
-          AND p.ESTADO_PEDIDO != 'CANCELADO'
+        C.ID_CLIENTE,
+        C.NOMBRE,
+        C.FECHA_REGISTRO,
+        DATEDIFF('day', C.FECHA_REGISTRO, CURRENT_DATE()) AS DIAS_COMO_CLIENTE,
+        COUNT(P.ID_PEDIDO) AS TOTAL_PEDIDOS,
+        COALESCE(SUM(P.MONTO_TOTAL), 0) AS MONTO_TOTAL_GASTADO,
+        COALESCE(AVG(P.MONTO_TOTAL), 0) AS MONTO_PROMEDIO_PEDIDO
+    FROM CLIENTES C
+    LEFT JOIN PEDIDOS P
+        ON C.ID_CLIENTE = P.ID_CLIENTE
+       AND P.ESTADO_PEDIDO != 'CANCELADO'
     GROUP BY
-        c.ID_CLIENTE,
-        c.NOMBRE,
-        c.FECHA_REGISTRO
+        C.ID_CLIENTE,
+        C.NOMBRE,
+        C.FECHA_REGISTRO
 )
 SELECT
     ID_CLIENTE,
     NOMBRE,
-    total_pedidos,
-    monto_total_gastado,
-    dias_como_cliente,
-    -- Segmento de valor (clasificación principal)
+    TOTAL_PEDIDOS,
+    ROUND(MONTO_TOTAL_GASTADO, 2) AS MONTO_TOTAL_GASTADO,
+    DIAS_COMO_CLIENTE,
     CASE
-        WHEN total_pedidos = 0
-          OR dias_como_cliente < 30                           THEN 'NEW'
-        WHEN monto_total_gastado >= 5000
-         AND total_pedidos >= 5                               THEN 'GOLD'
-        WHEN monto_total_gastado >= 1500
-         AND total_pedidos >= 2                               THEN 'SILVER'
-        WHEN total_pedidos >= 1                               THEN 'BRONZE'
-        ELSE                                                       'NEW'
-    END AS segmento_valor,
-    -- Segmento de antigüedad (segunda dimensión)
+        WHEN TOTAL_PEDIDOS = 0 OR DIAS_COMO_CLIENTE < 30 THEN 'NEW'
+        WHEN MONTO_TOTAL_GASTADO >= 5000 AND TOTAL_PEDIDOS >= 5 THEN 'GOLD'
+        WHEN MONTO_TOTAL_GASTADO >= 1500 AND TOTAL_PEDIDOS >= 2 THEN 'SILVER'
+        WHEN TOTAL_PEDIDOS >= 1 THEN 'BRONZE'
+        ELSE 'NEW'
+    END AS SEGMENTO_VALOR,
     CASE
-        WHEN dias_como_cliente < 30                           THEN 'Nuevo (< 1 mes)'
-        WHEN dias_como_cliente BETWEEN 30 AND 179             THEN 'Reciente (1-6 meses)'
-        WHEN dias_como_cliente BETWEEN 180 AND 364            THEN 'Establecido (6-12 meses)'
-        WHEN dias_como_cliente >= 365                         THEN 'Veterano (> 1 año)'
-        ELSE                                                       'Sin clasificar'
-    END AS segmento_antiguedad,
-    -- Indicador binario con IFF: ¿es cliente de alto valor?
-    IFF(monto_total_gastado >= 3000, 'Sí', 'No')             AS es_alto_valor
-FROM metricas_cliente
-ORDER BY monto_total_gastado DESC;
+        WHEN DIAS_COMO_CLIENTE < 30 THEN 'Nuevo (< 1 mes)'
+        WHEN DIAS_COMO_CLIENTE BETWEEN 30 AND 179 THEN 'Reciente (1-6 meses)'
+        WHEN DIAS_COMO_CLIENTE BETWEEN 180 AND 364 THEN 'Establecido (6-12 meses)'
+        WHEN DIAS_COMO_CLIENTE >= 365 THEN 'Veterano (> 1 año)'
+        ELSE 'Sin clasificar'
+    END AS SEGMENTO_ANTIGUEDAD,
+    IFF(MONTO_TOTAL_GASTADO >= 3000, 'Sí', 'No') AS ES_ALTO_VALOR
+FROM METRICAS_CLIENTE
+ORDER BY MONTO_TOTAL_GASTADO DESC;
 ```
 
-**4.3** Analiza la combinación de segmentos para identificar patrones:
+#### Paso 4.3 — Analiza la combinación de segmentos para identificar patrones
 
 ```sql
--- Cruce de segmento de valor vs. segmento de antigüedad
-WITH metricas_cliente AS (
+WITH METRICAS_CLIENTE AS (
     SELECT
-        c.ID_CLIENTE,
-        DATEDIFF('day', c.FECHA_REGISTRO, CURRENT_DATE())    AS dias_como_cliente,
-        COUNT(p.ID_PEDIDO)                                    AS total_pedidos,
-        COALESCE(SUM(p.MONTO_TOTAL), 0)                      AS monto_total_gastado
-    FROM CLIENTES c
-    LEFT JOIN PEDIDOS p
-           ON c.ID_CLIENTE = p.ID_CLIENTE
-          AND p.ESTADO_PEDIDO != 'CANCELADO'
-    GROUP BY c.ID_CLIENTE, c.FECHA_REGISTRO
+        C.ID_CLIENTE,
+        DATEDIFF('day', C.FECHA_REGISTRO, CURRENT_DATE()) AS DIAS_COMO_CLIENTE,
+        COUNT(P.ID_PEDIDO) AS TOTAL_PEDIDOS,
+        COALESCE(SUM(P.MONTO_TOTAL), 0) AS MONTO_TOTAL_GASTADO
+    FROM CLIENTES C
+    LEFT JOIN PEDIDOS P
+        ON C.ID_CLIENTE = P.ID_CLIENTE
+       AND P.ESTADO_PEDIDO != 'CANCELADO'
+    GROUP BY C.ID_CLIENTE, C.FECHA_REGISTRO
 ),
-clientes_segmentados AS (
+CLIENTES_SEGMENTADOS AS (
     SELECT
         CASE
-            WHEN total_pedidos = 0 OR dias_como_cliente < 30  THEN 'NEW'
-            WHEN monto_total_gastado >= 5000 AND total_pedidos >= 5 THEN 'GOLD'
-            WHEN monto_total_gastado >= 1500 AND total_pedidos >= 2 THEN 'SILVER'
-            WHEN total_pedidos >= 1                            THEN 'BRONZE'
+            WHEN TOTAL_PEDIDOS = 0 OR DIAS_COMO_CLIENTE < 30 THEN 'NEW'
+            WHEN MONTO_TOTAL_GASTADO >= 5000 AND TOTAL_PEDIDOS >= 5 THEN 'GOLD'
+            WHEN MONTO_TOTAL_GASTADO >= 1500 AND TOTAL_PEDIDOS >= 2 THEN 'SILVER'
+            WHEN TOTAL_PEDIDOS >= 1 THEN 'BRONZE'
             ELSE 'NEW'
-        END AS segmento_valor,
+        END AS SEGMENTO_VALOR,
         CASE
-            WHEN dias_como_cliente < 30                        THEN 'Nuevo'
-            WHEN dias_como_cliente BETWEEN 30 AND 179          THEN 'Reciente'
-            WHEN dias_como_cliente BETWEEN 180 AND 364         THEN 'Establecido'
-            WHEN dias_como_cliente >= 365                      THEN 'Veterano'
+            WHEN DIAS_COMO_CLIENTE < 30 THEN 'Nuevo'
+            WHEN DIAS_COMO_CLIENTE BETWEEN 30 AND 179 THEN 'Reciente'
+            WHEN DIAS_COMO_CLIENTE BETWEEN 180 AND 364 THEN 'Establecido'
+            WHEN DIAS_COMO_CLIENTE >= 365 THEN 'Veterano'
             ELSE 'Sin clasificar'
-        END AS segmento_antiguedad
-    FROM metricas_cliente
+        END AS SEGMENTO_ANTIGUEDAD
+    FROM METRICAS_CLIENTE
 )
 SELECT
-    segmento_valor,
-    segmento_antiguedad,
-    COUNT(*) AS cantidad_clientes
-FROM clientes_segmentados
-GROUP BY segmento_valor, segmento_antiguedad
+    SEGMENTO_VALOR,
+    SEGMENTO_ANTIGUEDAD,
+    COUNT(*) AS CANTIDAD_CLIENTES
+FROM CLIENTES_SEGMENTADOS
+GROUP BY SEGMENTO_VALOR, SEGMENTO_ANTIGUEDAD
 ORDER BY
-    CASE segmento_valor
-        WHEN 'GOLD' THEN 1 WHEN 'SILVER' THEN 2
-        WHEN 'BRONZE' THEN 3 WHEN 'NEW' THEN 4
+    CASE SEGMENTO_VALOR
+        WHEN 'GOLD' THEN 1
+        WHEN 'SILVER' THEN 2
+        WHEN 'BRONZE' THEN 3
+        WHEN 'NEW' THEN 4
     END,
-    segmento_antiguedad;
+    SEGMENTO_ANTIGUEDAD;
 ```
+
+**Verificación:**
+
+```sql
+-- Verificar que TODOS los clientes tienen un segmento asignado (no NULL)
+WITH METRICAS_CLIENTE AS (
+    SELECT
+        C.ID_CLIENTE,
+        DATEDIFF('day', C.FECHA_REGISTRO, CURRENT_DATE()) AS DIAS_COMO_CLIENTE,
+        COUNT(P.ID_PEDIDO) AS TOTAL_PEDIDOS,
+        COALESCE(SUM(P.MONTO_TOTAL), 0) AS MONTO_TOTAL_GASTADO
+    FROM CLIENTES C
+    LEFT JOIN PEDIDOS P
+        ON C.ID_CLIENTE = P.ID_CLIENTE
+       AND P.ESTADO_PEDIDO != 'CANCELADO'
+    GROUP BY C.ID_CLIENTE, C.FECHA_REGISTRO
+)
+SELECT
+    COUNT(*) AS TOTAL_CLIENTES,
+    COUNT(CASE
+        WHEN TOTAL_PEDIDOS = 0 OR DIAS_COMO_CLIENTE < 30 THEN 'NEW'
+        WHEN MONTO_TOTAL_GASTADO >= 5000 AND TOTAL_PEDIDOS >= 5 THEN 'GOLD'
+        WHEN MONTO_TOTAL_GASTADO >= 1500 AND TOTAL_PEDIDOS >= 2 THEN 'SILVER'
+        WHEN TOTAL_PEDIDOS >= 1 THEN 'BRONZE'
+        ELSE 'NEW'
+    END) AS CLIENTES_CON_SEGMENTO
+FROM METRICAS_CLIENTE;
+-- total_clientes debe ser igual a clientes_con_segmento
+```
+
+**Resultado esperado:** `TOTAL_CLIENTES = CLIENTES_CON_SEGMENTO`.
 
 #### Resultado esperado
 
@@ -630,173 +975,125 @@ ORDER BY
 - La consulta 4.2 agrega dos dimensiones de clasificación por cliente: segmento de valor y segmento de antigüedad.
 - La consulta 4.3 muestra una tabla cruzada con la distribución de clientes por combinación de segmentos.
 
-#### Verificación
-
-```sql
--- Verificar que TODOS los clientes tienen un segmento asignado (no NULL)
-WITH metricas_cliente AS (
-    SELECT
-        c.ID_CLIENTE,
-        DATEDIFF('day', c.FECHA_REGISTRO, CURRENT_DATE()) AS dias_como_cliente,
-        COUNT(p.ID_PEDIDO)                                 AS total_pedidos,
-        COALESCE(SUM(p.MONTO_TOTAL), 0)                   AS monto_total_gastado
-    FROM CLIENTES c
-    LEFT JOIN PEDIDOS p
-           ON c.ID_CLIENTE = p.ID_CLIENTE
-          AND p.ESTADO_PEDIDO != 'CANCELADO'
-    GROUP BY c.ID_CLIENTE, c.FECHA_REGISTRO
-)
-SELECT
-    COUNT(*) AS total_clientes,
-    COUNT(CASE
-              WHEN total_pedidos = 0 OR dias_como_cliente < 30  THEN 'NEW'
-              WHEN monto_total_gastado >= 5000 AND total_pedidos >= 5 THEN 'GOLD'
-              WHEN monto_total_gastado >= 1500 AND total_pedidos >= 2 THEN 'SILVER'
-              WHEN total_pedidos >= 1 THEN 'BRONZE'
-              ELSE 'NEW'
-          END) AS clientes_con_segmento
-FROM metricas_cliente;
--- total_clientes debe ser igual a clientes_con_segmento
-```
-
 ---
 
-### Paso 5: Resumen ejecutivo por segmento con CASE WHEN en agregaciones
+### Ejercicio 5 — Resumen ejecutivo por segmento
 
-**Objetivo:** Generar una tabla resumen con métricas clave por segmento usando `CASE WHEN` dentro de funciones de agregación, produciendo el reporte ejecutivo que el equipo de marketing necesita.
+**Objetivo:** Generar una tabla resumen con métricas clave por segmento usando CASE WHEN dentro de funciones de agregación, produciendo el reporte ejecutivo que el equipo de marketing necesita.
 
-#### Instrucciones
-
-**5.1** Construye el reporte ejecutivo completo por segmento usando `CASE WHEN` dentro de `SUM()` y `COUNT()`:
+#### Paso 5.1 — Construye el reporte ejecutivo completo por segmento usando CASE WHEN dentro de SUM() y COUNT():
 
 ```sql
--- Reporte ejecutivo por segmento de cliente
--- Usa CASE WHEN dentro de funciones de agregación para métricas condicionales
-WITH metricas_cliente AS (
+WITH METRICAS_CLIENTE AS (
     SELECT
-        c.ID_CLIENTE,
-        c.NOMBRE,
-        c.FECHA_REGISTRO,
-        DATEDIFF('day', c.FECHA_REGISTRO, CURRENT_DATE())    AS dias_como_cliente,
-        COUNT(p.ID_PEDIDO)                                    AS total_pedidos,
-        COALESCE(SUM(p.MONTO_TOTAL), 0)                      AS monto_total_gastado,
-        COALESCE(AVG(p.MONTO_TOTAL), 0)                      AS monto_promedio_pedido
-    FROM CLIENTES c
-    LEFT JOIN PEDIDOS p
-           ON c.ID_CLIENTE = p.ID_CLIENTE
-          AND p.ESTADO_PEDIDO != 'CANCELADO'
+        C.ID_CLIENTE,
+        C.NOMBRE,
+        C.FECHA_REGISTRO,
+        DATEDIFF('day', C.FECHA_REGISTRO, CURRENT_DATE()) AS DIAS_COMO_CLIENTE,
+        COUNT(P.ID_PEDIDO) AS TOTAL_PEDIDOS,
+        COALESCE(SUM(P.MONTO_TOTAL), 0) AS MONTO_TOTAL_GASTADO,
+        COALESCE(AVG(P.MONTO_TOTAL), 0) AS MONTO_PROMEDIO_PEDIDO
+    FROM CLIENTES C
+    LEFT JOIN PEDIDOS P
+        ON C.ID_CLIENTE = P.ID_CLIENTE
+       AND P.ESTADO_PEDIDO != 'CANCELADO'
     GROUP BY
-        c.ID_CLIENTE,
-        c.NOMBRE,
-        c.FECHA_REGISTRO
+        C.ID_CLIENTE,
+        C.NOMBRE,
+        C.FECHA_REGISTRO
 ),
-clientes_segmentados AS (
+CLIENTES_SEGMENTADOS AS (
     SELECT
         ID_CLIENTE,
         NOMBRE,
-        total_pedidos,
-        monto_total_gastado,
-        monto_promedio_pedido,
-        dias_como_cliente,
+        TOTAL_PEDIDOS,
+        MONTO_TOTAL_GASTADO,
+        MONTO_PROMEDIO_PEDIDO,
+        DIAS_COMO_CLIENTE,
         CASE
-            WHEN total_pedidos = 0
-              OR dias_como_cliente < 30                       THEN 'NEW'
-            WHEN monto_total_gastado >= 5000
-             AND total_pedidos >= 5                           THEN 'GOLD'
-            WHEN monto_total_gastado >= 1500
-             AND total_pedidos >= 2                           THEN 'SILVER'
-            WHEN total_pedidos >= 1                           THEN 'BRONZE'
-            ELSE                                                   'NEW'
-        END AS segmento_cliente
-    FROM metricas_cliente
+            WHEN TOTAL_PEDIDOS = 0 OR DIAS_COMO_CLIENTE < 30 THEN 'NEW'
+            WHEN MONTO_TOTAL_GASTADO >= 5000 AND TOTAL_PEDIDOS >= 5 THEN 'GOLD'
+            WHEN MONTO_TOTAL_GASTADO >= 1500 AND TOTAL_PEDIDOS >= 2 THEN 'SILVER'
+            WHEN TOTAL_PEDIDOS >= 1 THEN 'BRONZE'
+            ELSE 'NEW'
+        END AS SEGMENTO_CLIENTE
+    FROM METRICAS_CLIENTE
 )
 -- Reporte final: métricas agregadas por segmento
 SELECT
-    segmento_cliente,
-    COUNT(*)                                                  AS cantidad_clientes,
-    -- Porcentaje del total de clientes
-    ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER(), 1)        AS pct_clientes,
-    -- Métricas de gasto
-    ROUND(SUM(monto_total_gastado), 2)                        AS revenue_total_segmento,
-    ROUND(AVG(monto_total_gastado), 2)                        AS gasto_promedio_cliente,
-    ROUND(MAX(monto_total_gastado), 2)                        AS gasto_maximo_cliente,
-    -- Métricas de frecuencia
-    ROUND(AVG(total_pedidos), 1)                              AS pedidos_promedio,
-    -- Antigüedad promedio
-    ROUND(AVG(dias_como_cliente), 0)                          AS antiguedad_promedio_dias,
-    -- Porcentaje del revenue total
-    ROUND(SUM(monto_total_gastado) * 100.0 /
-          SUM(SUM(monto_total_gastado)) OVER(), 1)            AS pct_revenue_total
-FROM clientes_segmentados
-GROUP BY segmento_cliente
+    SEGMENTO_CLIENTE,
+    COUNT(*) AS CANTIDAD_CLIENTES,
+    ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER(), 1) AS PCT_CLIENTES,
+    ROUND(SUM(MONTO_TOTAL_GASTADO), 2) AS REVENUE_TOTAL_SEGMENTO,
+    ROUND(AVG(MONTO_TOTAL_GASTADO), 2) AS GASTO_PROMEDIO_CLIENTE,
+    ROUND(MAX(MONTO_TOTAL_GASTADO), 2) AS GASTO_MAXIMO_CLIENTE,
+    ROUND(AVG(TOTAL_PEDIDOS), 1) AS PEDIDOS_PROMEDIO,
+    ROUND(AVG(DIAS_COMO_CLIENTE), 0) AS ANTIGUEDAD_PROMEDIO_DIAS,
+    ROUND(
+        SUM(MONTO_TOTAL_GASTADO) * 100.0 /
+        NULLIF(SUM(SUM(MONTO_TOTAL_GASTADO)) OVER(), 0),
+        1
+    ) AS PCT_REVENUE_TOTAL
+FROM CLIENTES_SEGMENTADOS
+GROUP BY SEGMENTO_CLIENTE
 ORDER BY
-    CASE segmento_cliente
-        WHEN 'GOLD'   THEN 1
+    CASE SEGMENTO_CLIENTE
+        WHEN 'GOLD' THEN 1
         WHEN 'SILVER' THEN 2
         WHEN 'BRONZE' THEN 3
-        WHEN 'NEW'    THEN 4
+        WHEN 'NEW' THEN 4
     END;
 ```
 
 > 📌 **Nota sobre `SUM(COUNT(*)) OVER()`:** Esta es una window function básica que calcula el total general para calcular porcentajes. Las window functions se estudiarán en profundidad en el Laboratorio 4; por ahora, úsala como está sin modificarla.
 
-**5.2** Genera un reporte de métricas condicionales usando `CASE WHEN` dentro de `SUM()` — el patrón de "pivot condicional":
+#### Paso 5.2 — Genera un reporte de métricas condicionales usando CASE WHEN dentro de SUM() — el patrón de "pivot condicional":
 
 ```sql
 -- Pivot condicional: métricas de revenue por segmento en columnas separadas
 -- Patrón: SUM(CASE WHEN condición THEN valor ELSE 0 END)
-WITH metricas_cliente AS (
+WITH METRICAS_CLIENTE AS (
     SELECT
-        c.ID_CLIENTE,
-        DATEDIFF('day', c.FECHA_REGISTRO, CURRENT_DATE())    AS dias_como_cliente,
-        COUNT(p.ID_PEDIDO)                                    AS total_pedidos,
-        COALESCE(SUM(p.MONTO_TOTAL), 0)                      AS monto_total_gastado
-    FROM CLIENTES c
-    LEFT JOIN PEDIDOS p
-           ON c.ID_CLIENTE = p.ID_CLIENTE
-          AND p.ESTADO_PEDIDO != 'CANCELADO'
-    GROUP BY c.ID_CLIENTE, c.FECHA_REGISTRO
+        C.ID_CLIENTE,
+        DATEDIFF('day', C.FECHA_REGISTRO, CURRENT_DATE()) AS DIAS_COMO_CLIENTE,
+        COUNT(P.ID_PEDIDO) AS TOTAL_PEDIDOS,
+        COALESCE(SUM(P.MONTO_TOTAL), 0) AS MONTO_TOTAL_GASTADO
+    FROM CLIENTES C
+    LEFT JOIN PEDIDOS P
+        ON C.ID_CLIENTE = P.ID_CLIENTE
+       AND P.ESTADO_PEDIDO != 'CANCELADO'
+    GROUP BY C.ID_CLIENTE, C.FECHA_REGISTRO
 ),
-clientes_segmentados AS (
+CLIENTES_SEGMENTADOS AS (
     SELECT
         ID_CLIENTE,
-        monto_total_gastado,
-        total_pedidos,
+        MONTO_TOTAL_GASTADO,
+        TOTAL_PEDIDOS,
         CASE
-            WHEN total_pedidos = 0 OR dias_como_cliente < 30  THEN 'NEW'
-            WHEN monto_total_gastado >= 5000 AND total_pedidos >= 5 THEN 'GOLD'
-            WHEN monto_total_gastado >= 1500 AND total_pedidos >= 2 THEN 'SILVER'
-            WHEN total_pedidos >= 1 THEN 'BRONZE'
+            WHEN TOTAL_PEDIDOS = 0 OR DIAS_COMO_CLIENTE < 30 THEN 'NEW'
+            WHEN MONTO_TOTAL_GASTADO >= 5000 AND TOTAL_PEDIDOS >= 5 THEN 'GOLD'
+            WHEN MONTO_TOTAL_GASTADO >= 1500 AND TOTAL_PEDIDOS >= 2 THEN 'SILVER'
+            WHEN TOTAL_PEDIDOS >= 1 THEN 'BRONZE'
             ELSE 'NEW'
-        END AS segmento_cliente
-    FROM metricas_cliente
+        END AS SEGMENTO_CLIENTE
+    FROM METRICAS_CLIENTE
 )
 -- Resumen global con columnas por segmento (pivot condicional)
 SELECT
-    COUNT(*)                                                   AS total_clientes,
-    -- Conteo por segmento usando COUNT con CASE WHEN
-    COUNT(CASE WHEN segmento_cliente = 'GOLD'   THEN 1 END)   AS clientes_gold,
-    COUNT(CASE WHEN segmento_cliente = 'SILVER' THEN 1 END)   AS clientes_silver,
-    COUNT(CASE WHEN segmento_cliente = 'BRONZE' THEN 1 END)   AS clientes_bronze,
-    COUNT(CASE WHEN segmento_cliente = 'NEW'    THEN 1 END)   AS clientes_new,
-    -- Revenue por segmento usando SUM con CASE WHEN
-    ROUND(SUM(CASE WHEN segmento_cliente = 'GOLD'
-                   THEN monto_total_gastado ELSE 0 END), 2)   AS revenue_gold,
-    ROUND(SUM(CASE WHEN segmento_cliente = 'SILVER'
-                   THEN monto_total_gastado ELSE 0 END), 2)   AS revenue_silver,
-    ROUND(SUM(CASE WHEN segmento_cliente = 'BRONZE'
-                   THEN monto_total_gastado ELSE 0 END), 2)   AS revenue_bronze,
-    -- Revenue total para verificación
-    ROUND(SUM(monto_total_gastado), 2)                         AS revenue_total
-FROM clientes_segmentados;
+    COUNT(*) AS TOTAL_CLIENTES,
+    COUNT(CASE WHEN SEGMENTO_CLIENTE = 'GOLD' THEN 1 END) AS CLIENTES_GOLD,
+    COUNT(CASE WHEN SEGMENTO_CLIENTE = 'SILVER' THEN 1 END) AS CLIENTES_SILVER,
+    COUNT(CASE WHEN SEGMENTO_CLIENTE = 'BRONZE' THEN 1 END) AS CLIENTES_BRONZE,
+    COUNT(CASE WHEN SEGMENTO_CLIENTE = 'NEW' THEN 1 END) AS CLIENTES_NEW,
+    ROUND(SUM(CASE WHEN SEGMENTO_CLIENTE = 'GOLD' THEN MONTO_TOTAL_GASTADO ELSE 0 END), 2) AS REVENUE_GOLD,
+    ROUND(SUM(CASE WHEN SEGMENTO_CLIENTE = 'SILVER' THEN MONTO_TOTAL_GASTADO ELSE 0 END), 2) AS REVENUE_SILVER,
+    ROUND(SUM(CASE WHEN SEGMENTO_CLIENTE = 'BRONZE' THEN MONTO_TOTAL_GASTADO ELSE 0 END), 2) AS REVENUE_BRONZE,
+    ROUND(SUM(CASE WHEN SEGMENTO_CLIENTE = 'NEW' THEN MONTO_TOTAL_GASTADO ELSE 0 END), 2) AS REVENUE_NEW,
+    ROUND(SUM(MONTO_TOTAL_GASTADO), 2) AS REVENUE_TOTAL
+FROM CLIENTES_SEGMENTADOS;
 ```
 
-#### Resultado esperado
-
-- La consulta 5.1 debe producir exactamente 4 filas (una por segmento: GOLD, SILVER, BRONZE, NEW) con todas las métricas calculadas.
-- La consulta 5.2 debe producir exactamente **1 fila** con columnas separadas para cada segmento — el patrón pivot condicional.
-- La suma de `clientes_gold + clientes_silver + clientes_bronze + clientes_new` debe ser igual a `total_clientes`.
-- La suma de `revenue_gold + revenue_silver + revenue_bronze` debe ser igual a `revenue_total`.
+**Resultado esperado:** una sola fila con conteos y revenue por segmento. La suma de clientes por segmento debe igualar `TOTAL_CLIENTES`.
 
 #### Verificación
 
@@ -820,15 +1117,20 @@ FROM metricas_cliente;
 -- Este valor debe coincidir con revenue_total de la consulta 5.2
 ```
 
+#### Resultado esperado
+
+- La consulta 5.1 debe producir exactamente 4 filas (una por segmento: GOLD, SILVER, BRONZE, NEW) con todas las métricas calculadas.
+- La consulta 5.2 debe producir exactamente **1 fila** con columnas separadas para cada segmento — el patrón pivot condicional.
+- La suma de `clientes_gold + clientes_silver + clientes_bronze + clientes_new` debe ser igual a `total_clientes`.
+- La suma de `revenue_gold + revenue_silver + revenue_bronze` debe ser igual a `revenue_total`.
+
 ---
 
-### Paso 6: Dataset enriquecido para análisis posterior — Integración con CTE
+### Ejercicio 6 — Dataset enriquecido para análisis posterior
 
 **Objetivo:** Producir el dataset final enriquecido con todas las clasificaciones, listo para ser consumido por reportes o análisis posteriores, usando una estructura de CTEs encadenadas aprendida en el Laboratorio 1.
 
-#### Instrucciones
-
-**6.1** Construye la consulta final que integra todo lo aprendido en este laboratorio: métricas base, clasificación multinivel, segmentación de antigüedad y resumen ejecutivo en una estructura de CTEs encadenadas:
+#### Paso 6.1 — Construye la consulta final que integra todo lo aprendido en este laboratorio: métricas base, clasificación multinivel, segmentación de antigüedad y resumen ejecutivo en una estructura de CTEs encadenadas:
 
 ```sql
 -- ============================================================
@@ -958,7 +1260,7 @@ FROM clientes_con_prioridad
 ORDER BY prioridad_accion_marketing, monto_total_gastado DESC;
 ```
 
-**6.2** Genera el resumen ejecutivo final del dataset enriquecido:
+#### Paso 6.2 — Resumen ejecutivo del dataset enriquecido
 
 ```sql
 -- Resumen ejecutivo: distribución de clientes por prioridad de acción
@@ -1012,232 +1314,256 @@ ORDER BY
     END;
 ```
 
-#### Resultado esperado
-
-- La consulta 6.1 produce el dataset enriquecido completo con 5 columnas de clasificación por cliente.
-- La consulta 6.2 muestra la distribución cruzada de segmento vs. riesgo de abandono.
-- Todos los clientes tienen valores asignados en todas las columnas de clasificación (sin `NULL` en las columnas `CASE WHEN`).
-
 ---
 
-## 7. Validación y Pruebas
+## Validación y Pruebas
 
-Ejecuta las siguientes consultas de validación para confirmar que todos los resultados son correctos antes de cerrar el laboratorio:
+Ejecuta las siguientes consultas para confirmar que el laboratorio quedó correcto.
+
+### Validación 1 — Conteo total de clientes
 
 ```sql
--- ============================================================
--- SUITE DE VALIDACIÓN FINAL - Lab 02-00-01
--- Ejecutar todas las consultas y verificar los resultados
--- ============================================================
-
--- VALIDACIÓN 1: Conteo total de clientes debe ser consistente
 SELECT
-    'Clientes en tabla base'    AS verificacion,
-    COUNT(*)                    AS valor
+    'Clientes en tabla base' AS VERIFICACION,
+    COUNT(*) AS VALOR
 FROM CLIENTES
 UNION ALL
 SELECT
-    'Clientes en métricas CTE'  AS verificacion,
-    COUNT(DISTINCT c.ID_CLIENTE) AS valor
-FROM CLIENTES c
-LEFT JOIN PEDIDOS p ON c.ID_CLIENTE = p.ID_CLIENTE;
--- Ambos valores deben ser iguales
-
--- VALIDACIÓN 2: Ningún cliente debe tener segmento NULL
-WITH metricas AS (
-    SELECT
-        c.ID_CLIENTE,
-        DATEDIFF('day', c.FECHA_REGISTRO, CURRENT_DATE()) AS dias_cliente,
-        COUNT(p.ID_PEDIDO)                                 AS n_pedidos,
-        COALESCE(SUM(p.MONTO_TOTAL), 0)                   AS monto
-    FROM CLIENTES c
-    LEFT JOIN PEDIDOS p
-           ON c.ID_CLIENTE = p.ID_CLIENTE
-          AND p.ESTADO_PEDIDO != 'CANCELADO'
-    GROUP BY c.ID_CLIENTE, c.FECHA_REGISTRO
-)
-SELECT
-    COUNT(*)                                               AS total_clientes,
-    COUNT(CASE WHEN n_pedidos = 0 OR dias_cliente < 30    THEN 'NEW'
-               WHEN monto >= 5000 AND n_pedidos >= 5      THEN 'GOLD'
-               WHEN monto >= 1500 AND n_pedidos >= 2      THEN 'SILVER'
-               WHEN n_pedidos >= 1                        THEN 'BRONZE'
-               ELSE 'NEW' END)                             AS clientes_con_segmento
-FROM metricas;
--- total_clientes debe ser igual a clientes_con_segmento
-
--- VALIDACIÓN 3: La suma de clientes por segmento debe igualar el total
-WITH metricas AS (
-    SELECT
-        c.ID_CLIENTE,
-        DATEDIFF('day', c.FECHA_REGISTRO, CURRENT_DATE()) AS dias_cliente,
-        COUNT(p.ID_PEDIDO)                                 AS n_pedidos,
-        COALESCE(SUM(p.MONTO_TOTAL), 0)                   AS monto
-    FROM CLIENTES c
-    LEFT JOIN PEDIDOS p
-           ON c.ID_CLIENTE = p.ID_CLIENTE
-          AND p.ESTADO_PEDIDO != 'CANCELADO'
-    GROUP BY c.ID_CLIENTE, c.FECHA_REGISTRO
-),
-segmentados AS (
-    SELECT
-        CASE
-            WHEN n_pedidos = 0 OR dias_cliente < 30       THEN 'NEW'
-            WHEN monto >= 5000 AND n_pedidos >= 5         THEN 'GOLD'
-            WHEN monto >= 1500 AND n_pedidos >= 2         THEN 'SILVER'
-            WHEN n_pedidos >= 1                           THEN 'BRONZE'
-            ELSE 'NEW'
-        END AS segmento
-    FROM metricas
-)
-SELECT
-    COUNT(*)                                               AS total_general,
-    COUNT(CASE WHEN segmento = 'GOLD'   THEN 1 END)       AS gold,
-    COUNT(CASE WHEN segmento = 'SILVER' THEN 1 END)       AS silver,
-    COUNT(CASE WHEN segmento = 'BRONZE' THEN 1 END)       AS bronze,
-    COUNT(CASE WHEN segmento = 'NEW'    THEN 1 END)       AS new_clientes,
-    -- La siguiente columna debe ser 0 si todos están clasificados
-    COUNT(CASE WHEN segmento IS NULL    THEN 1 END)       AS sin_segmento
-FROM segmentados;
--- sin_segmento debe ser 0
--- gold + silver + bronze + new_clientes debe igualar total_general
+    'Clientes en métricas CTE' AS VERIFICACION,
+    COUNT(DISTINCT C.ID_CLIENTE) AS VALOR
+FROM CLIENTES C
+LEFT JOIN PEDIDOS P
+    ON C.ID_CLIENTE = P.ID_CLIENTE;
 ```
 
-**Criterios de éxito:**
+**Resultado esperado:** ambos valores deben ser `12`.
 
-| Validación | Resultado esperado |
-|---|---|
-| Validación 1 | Ambos conteos son iguales |
-| Validación 2 | `total_clientes = clientes_con_segmento` |
-| Validación 3 | `sin_segmento = 0`; suma de segmentos = total general |
-
----
-
-## 8. Resolución de Problemas
-
-### Problema 1: Error "Object 'CLIENTES' does not exist or not authorized"
-
-**Síntomas:**
-Al ejecutar cualquier consulta que referencia `CLIENTES` o `PEDIDOS`, Snowflake retorna:
-```
-SQL compilation error: Object 'LAB_SQL_INTERMEDIO.VENTAS.CLIENTES' does not exist or not authorized.
-```
-
-**Causa:**
-El contexto de la sesión no está configurado correctamente. El warehouse, la base de datos o el schema activo no corresponden al entorno del laboratorio. Esto ocurre cuando se abre una nueva worksheet sin ejecutar el bloque de configuración inicial, o cuando el rol activo no tiene permisos sobre los objetos.
-
-**Solución:**
-1. Verifica el contexto activo en la barra superior de Snowsight (muestra el rol, warehouse, base de datos y schema seleccionados).
-2. Ejecuta nuevamente el bloque de configuración inicial del Paso 5 de este laboratorio:
-   ```sql
-   USE ROLE LAB_ROLE;
-   USE WAREHOUSE LAB_WH;
-   USE DATABASE LAB_SQL_INTERMEDIO;
-   USE SCHEMA VENTAS;
-   ```
-3. Si el error persiste después de configurar el contexto, verifica con el instructor que el script `00_setup_laboratorios.sql` fue ejecutado y que tu usuario tiene los permisos correctos:
-   ```sql
-   SHOW GRANTS TO ROLE LAB_ROLE;
-   ```
-
----
-
-### Problema 2: La clasificación CASE WHEN produce resultados inesperados — clientes clasificados en el segmento incorrecto
-
-**Síntomas:**
-Algunos clientes aparecen clasificados como `BRONZE` cuando deberían ser `GOLD`, o aparecen en `NEW` a pesar de tener historial de compras. Al revisar los datos del cliente, los valores de `monto_total_gastado` y `total_pedidos` parecen correctos.
-
-**Causa:**
-El error más frecuente es el **orden de evaluación de condiciones en `CASE WHEN`**. Si la condición de `BRONZE` (`total_pedidos >= 1`) aparece antes que la condición de `GOLD` o `SILVER`, todos los clientes con al menos un pedido serán clasificados como `BRONZE` sin llegar a evaluar las condiciones superiores. También puede ocurrir cuando `monto_total_gastado` tiene valores `NULL` (no tratados con `COALESCE`) que hacen que las comparaciones numéricas retornen `NULL` en lugar de `FALSE`.
-
-**Solución:**
-1. **Verifica el orden de las condiciones:** Las condiciones más restrictivas (GOLD) deben ir primero. `CASE WHEN` retorna el resultado de la **primera condición verdadera**:
-   ```sql
-   -- CORRECTO: de más restrictivo a menos restrictivo
-   CASE
-       WHEN total_pedidos = 0 OR dias_como_cliente < 30  THEN 'NEW'    -- primero
-       WHEN monto >= 5000 AND total_pedidos >= 5         THEN 'GOLD'   -- segundo
-       WHEN monto >= 1500 AND total_pedidos >= 2         THEN 'SILVER' -- tercero
-       WHEN total_pedidos >= 1                           THEN 'BRONZE' -- último
-       ELSE 'NEW'
-   END
-   ```
-2. **Trata los valores NULL con `COALESCE`** en la CTE de métricas base:
-   ```sql
-   COALESCE(SUM(p.MONTO_TOTAL), 0) AS monto_total_gastado
-   -- Convierte NULL a 0 para que las comparaciones numéricas funcionen correctamente
-   ```
-3. Para diagnosticar, agrega una columna de depuración que muestre los valores crudos junto con la clasificación y verifica manualmente algunos registros:
-   ```sql
-   SELECT ID_CLIENTE, total_pedidos, monto_total_gastado, segmento_cliente
-   FROM clientes_segmentados
-   WHERE segmento_cliente = 'BRONZE'
-   ORDER BY monto_total_gastado DESC
-   LIMIT 10;
-   -- Si ves clientes con monto >= 5000 y pedidos >= 5, el orden de condiciones está incorrecto
-   ```
-
----
-
-## 9. Limpieza del Entorno
-
-Al finalizar el laboratorio, ejecuta los siguientes comandos para liberar recursos y evitar consumo innecesario de créditos Snowflake:
+### Validación 2 — Ningún cliente queda sin segmento
 
 ```sql
--- ============================================================
--- LIMPIEZA POST-LABORATORIO - Lab 02-00-01
--- ============================================================
-
--- 1. Suspender el warehouse para detener el consumo de créditos
---    IMPORTANTE: Ejecutar SIEMPRE al terminar la sesión
-ALTER WAREHOUSE LAB_WH SUSPEND;
-
--- 2. Verificar que el warehouse quedó suspendido
-SHOW WAREHOUSES LIKE 'LAB_WH';
--- El campo STATE debe mostrar 'SUSPENDED'
+WITH METRICAS AS (
+    SELECT
+        C.ID_CLIENTE,
+        DATEDIFF('day', C.FECHA_REGISTRO, CURRENT_DATE()) AS DIAS_CLIENTE,
+        COUNT(P.ID_PEDIDO) AS N_PEDIDOS,
+        COALESCE(SUM(P.MONTO_TOTAL), 0) AS MONTO
+    FROM CLIENTES C
+    LEFT JOIN PEDIDOS P
+        ON C.ID_CLIENTE = P.ID_CLIENTE
+       AND P.ESTADO_PEDIDO != 'CANCELADO'
+    GROUP BY C.ID_CLIENTE, C.FECHA_REGISTRO
+)
+SELECT
+    COUNT(*) AS TOTAL_CLIENTES,
+    COUNT(CASE
+        WHEN N_PEDIDOS = 0 OR DIAS_CLIENTE < 30 THEN 'NEW'
+        WHEN MONTO >= 5000 AND N_PEDIDOS >= 5 THEN 'GOLD'
+        WHEN MONTO >= 1500 AND N_PEDIDOS >= 2 THEN 'SILVER'
+        WHEN N_PEDIDOS >= 1 THEN 'BRONZE'
+        ELSE 'NEW'
+    END) AS CLIENTES_CON_SEGMENTO
+FROM METRICAS;
 ```
 
-> ⚠️ **Recordatorio importante sobre créditos:** Las cuentas de prueba (trial) de Snowflake tienen un límite de 400 USD de créditos. Un warehouse X-SMALL consume aproximadamente 1 crédito por hora de uso activo. Suspender el warehouse al terminar cada sesión es una práctica obligatoria en este curso. Si olvidas suspenderlo, el warehouse se suspende automáticamente después del período de inactividad configurado (generalmente 5-10 minutos), pero es mejor hacerlo manualmente.
+**Resultado esperado:** `TOTAL_CLIENTES = CLIENTES_CON_SEGMENTO`.
 
-**No es necesario eliminar ningún objeto de base de datos.** Las tablas `CLIENTES`, `PEDIDOS`, `VENTAS` y `PRODUCTOS` son compartidas entre todos los laboratorios del curso y deben permanecer intactas para los laboratorios 3 al 7.
+### Validación 3 — Suma de clientes por segmento
+
+```sql
+WITH METRICAS AS (
+    SELECT
+        C.ID_CLIENTE,
+        DATEDIFF('day', C.FECHA_REGISTRO, CURRENT_DATE()) AS DIAS_CLIENTE,
+        COUNT(P.ID_PEDIDO) AS N_PEDIDOS,
+        COALESCE(SUM(P.MONTO_TOTAL), 0) AS MONTO
+    FROM CLIENTES C
+    LEFT JOIN PEDIDOS P
+        ON C.ID_CLIENTE = P.ID_CLIENTE
+       AND P.ESTADO_PEDIDO != 'CANCELADO'
+    GROUP BY C.ID_CLIENTE, C.FECHA_REGISTRO
+),
+SEGMENTADOS AS (
+    SELECT
+        CASE
+            WHEN N_PEDIDOS = 0 OR DIAS_CLIENTE < 30 THEN 'NEW'
+            WHEN MONTO >= 5000 AND N_PEDIDOS >= 5 THEN 'GOLD'
+            WHEN MONTO >= 1500 AND N_PEDIDOS >= 2 THEN 'SILVER'
+            WHEN N_PEDIDOS >= 1 THEN 'BRONZE'
+            ELSE 'NEW'
+        END AS SEGMENTO
+    FROM METRICAS
+)
+SELECT
+    COUNT(*) AS TOTAL_GENERAL,
+    COUNT(CASE WHEN SEGMENTO = 'GOLD' THEN 1 END) AS GOLD,
+    COUNT(CASE WHEN SEGMENTO = 'SILVER' THEN 1 END) AS SILVER,
+    COUNT(CASE WHEN SEGMENTO = 'BRONZE' THEN 1 END) AS BRONZE,
+    COUNT(CASE WHEN SEGMENTO = 'NEW' THEN 1 END) AS NEW_CLIENTES,
+    COUNT(CASE WHEN SEGMENTO IS NULL THEN 1 END) AS SIN_SEGMENTO
+FROM SEGMENTADOS;
+```
+
+**Resultado esperado:** `SIN_SEGMENTO = 0` y la suma de `GOLD + SILVER + BRONZE + NEW_CLIENTES` debe ser igual a `TOTAL_GENERAL`.
+
+### Validación 4 — Revenue por segmento contra revenue total
+
+```sql
+WITH METRICAS AS (
+    SELECT
+        C.ID_CLIENTE,
+        DATEDIFF('day', C.FECHA_REGISTRO, CURRENT_DATE()) AS DIAS_CLIENTE,
+        COUNT(P.ID_PEDIDO) AS N_PEDIDOS,
+        COALESCE(SUM(P.MONTO_TOTAL), 0) AS MONTO
+    FROM CLIENTES C
+    LEFT JOIN PEDIDOS P
+        ON C.ID_CLIENTE = P.ID_CLIENTE
+       AND P.ESTADO_PEDIDO != 'CANCELADO'
+    GROUP BY C.ID_CLIENTE, C.FECHA_REGISTRO
+)
+SELECT
+    ROUND(SUM(MONTO), 2) AS REVENUE_DIRECTO_DE_METRICAS
+FROM METRICAS;
+```
+
+Este valor debe coincidir con `REVENUE_TOTAL` del Paso 5.2.
 
 ---
 
-## 10. Resumen y Próximos Pasos
+## Resultados esperados clave con el dataset cargado
 
-### Lo que aprendiste en este laboratorio
-
-En este laboratorio implementaste un sistema completo de segmentación de clientes usando `CASE WHEN` en Snowflake. Los conceptos clave que practicaste:
-
-| Concepto | Aplicación en el laboratorio |
+| Consulta / Ejercicio | Resultado esperado |
 |---|---|
-| `CASE WHEN` forma buscada | Clasificación de pedidos por monto (Paso 2) |
-| `CASE WHEN` forma simple | Traducción de códigos de estado (Paso 2) |
-| `CASE WHEN` con condiciones compuestas (`AND`, `BETWEEN`) | Clasificación multinivel GOLD/SILVER/BRONZE (Paso 4) |
-| `CASE WHEN` dentro de `SUM()` y `COUNT()` | Pivot condicional de métricas por segmento (Paso 5) |
-| `CASE WHEN` dentro de `ORDER BY` | Control de orden lógico de resultados (Pasos 4 y 5) |
-| `IFF()` de Snowflake | Clasificación binaria simplificada (Pasos 2 y 6) |
-| CTEs encadenadas con clasificaciones | Dataset enriquecido final (Paso 6) |
-| Manejo de `NULL` con `COALESCE` en clasificaciones | Tratamiento de clientes sin pedidos (Pasos 3-6) |
+| Conteo de `CLIENTES` | 12 filas |
+| Conteo de `PRODUCTOS` | 12 filas |
+| Conteo de `PEDIDOS` | 23 filas |
+| Conteo de `VENTAS` | 23 filas |
+| Categorías de monto | 4 categorías: `Bajo`, `Medio`, `Alto`, `Premium` |
+| Estados de pedido | `CANCELADO`, `COMPLETADO`, `EN_PROCESO`, `ENVIADO` |
+| Segmentos de cliente | `GOLD`, `SILVER`, `BRONZE`, `NEW` |
+| Clientes `GOLD` | 2 |
+| Clientes `SILVER` | 3 |
+| Clientes `BRONZE` | 3 |
+| Clientes `NEW` | 4 |
+| Clientes sin pedidos válidos | Al menos 2 |
+| Clientes con riesgo de abandono | Deben existir casos `Activo`, `Riesgo medio`, `Riesgo alto` y `Sin compras` |
 
-### Puntos clave para recordar
+---
 
-- **El orden de las condiciones en `CASE WHEN` es crítico:** se evalúan de arriba hacia abajo y se retorna la primera condición verdadera. Coloca siempre las condiciones más restrictivas primero.
-- **`IFF()` es exclusivo de Snowflake:** no es portable a PostgreSQL, MySQL ni SQL Server. Úsalo cuando la simplicidad sea prioritaria y el código no necesite ser portable.
-- **`CASE WHEN` dentro de `SUM()` o `COUNT()` permite calcular métricas condicionales en una sola pasada** sobre los datos, lo que es más eficiente que múltiples subconsultas o uniones.
-- **`COALESCE()` es tu aliado:** siempre trata los `NULL` antes de usarlos en comparaciones dentro de `CASE WHEN`.
+## Solución de Problemas
+
+### Problema 1 — Error: `Object 'CLIENTES' does not exist or not authorized`
+
+**Síntoma:** Snowflake devuelve error indicando que la tabla no existe o no tienes permisos.
+
+**Causa probable:** no se ejecutó el script de setup, no estás en el database/schema correcto o el rol activo no tiene permisos.
+
+**Solución:**
+
+```sql
+USE WAREHOUSE COMPUTE_WH;
+USE DATABASE LAB_SQL_INTERMEDIO;
+USE SCHEMA VENTAS;
+
+SHOW TABLES;
+```
+
+Si las tablas no aparecen, vuelve a ejecutar el script **`03_SETUP_DATOS_CASE_WHEN_SEGMENTACION`**.
+
+---
+
+### Problema 2 — La clasificación `CASE WHEN` asigna segmentos incorrectos
+
+**Síntoma:** clientes con alto monto aparecen como `BRONZE` o clientes nuevos aparecen como `GOLD`.
+
+**Causa probable:** el orden de condiciones del `CASE WHEN` fue modificado.
+
+**Solución:** respeta el orden lógico:
+
+```sql
+CASE
+    WHEN TOTAL_PEDIDOS = 0 OR DIAS_COMO_CLIENTE < 30 THEN 'NEW'
+    WHEN MONTO_TOTAL_GASTADO >= 5000 AND TOTAL_PEDIDOS >= 5 THEN 'GOLD'
+    WHEN MONTO_TOTAL_GASTADO >= 1500 AND TOTAL_PEDIDOS >= 2 THEN 'SILVER'
+    WHEN TOTAL_PEDIDOS >= 1 THEN 'BRONZE'
+    ELSE 'NEW'
+END
+```
+
+---
+
+### Problema 3 — Los clientes sin compras aparecen con montos `NULL`
+
+**Síntoma:** algunos clientes no se clasifican correctamente porque su monto total aparece como `NULL`.
+
+**Causa probable:** se usó `SUM(P.MONTO_TOTAL)` sin `COALESCE`.
+
+**Solución:**
+
+```sql
+COALESCE(SUM(P.MONTO_TOTAL), 0) AS MONTO_TOTAL_GASTADO
+```
+
+Esto convierte los `NULL` en `0` para poder comparar correctamente.
+
+---
+
+### Problema 4 — El reporte de riesgo de abandono no muestra todas las categorías
+
+**Síntoma:** no aparecen `Activo`, `Riesgo medio`, `Riesgo alto` o `Sin compras`.
+
+**Causa probable:** el dataset fue modificado o las fechas fueron reemplazadas por fechas fijas.
+
+**Solución:** usa el dataset incluido en esta práctica. Las fechas se generan con `DATEADD` relativo a `CURRENT_DATE()` para que los rangos de riesgo funcionen sin importar cuándo se ejecute la práctica.
+
+---
+
+## Limpieza del entorno
+
+Al finalizar el laboratorio, ejecuta:
+
+```sql
+ALTER WAREHOUSE COMPUTE_WH SUSPEND;
+```
+
+> Importante: suspender el warehouse evita consumo innecesario de créditos.
+
+No es necesario eliminar tablas ni datos. El schema `LAB_SQL_INTERMEDIO.VENTAS` puede reutilizarse en prácticas posteriores.
+
+---
+
+## Resumen
+
+En este laboratorio implementaste un sistema completo de clasificación de clientes usando reglas de negocio con `CASE WHEN`.
+
+| Concepto practicado | Ejercicio | Resultado clave |
+|---|---|---|
+| `CASE WHEN` forma buscada | Ejercicio 2 | Clasificación de pedidos por monto |
+| `CASE WHEN` forma simple | Ejercicio 2 | Traducción de estados de pedido |
+| `IFF()` | Ejercicio 2 y 6 | Clasificación binaria simplificada |
+| `LEFT JOIN` + `COALESCE` | Ejercicio 3 | Inclusión de clientes sin pedidos |
+| Clasificación multinivel | Ejercicio 4 | Segmentos `GOLD`, `SILVER`, `BRONZE`, `NEW` |
+| `CASE WHEN` en agregaciones | Ejercicio 5 | Resumen ejecutivo y pivot condicional |
+| CTEs encadenadas | Ejercicio 6 | Dataset enriquecido para análisis posterior |
+
+### Conclusiones principales
+
+1. **`CASE WHEN` permite transformar reglas de negocio en columnas analíticas reutilizables.**
+2. **El orden de las condiciones importa:** la primera condición verdadera es la que define el resultado.
+3. **`COALESCE` es esencial cuando se trabaja con `LEFT JOIN` y clientes sin transacciones.**
+4. **`IFF()` simplifica clasificaciones binarias, pero `CASE WHEN` es más flexible y portable.**
+5. **Las CTEs ayudan a separar métricas base, reglas de clasificación y presentación final.**
 
 ### Próximos pasos
 
-En el **Laboratorio 3 (Lab 02-01-01: Detección y manejo de duplicados)** aplicarás las clasificaciones construidas en este laboratorio como punto de partida para identificar y resolver registros duplicados en los datasets. Además, se introducirá `ROW_NUMBER()` como primera window function, en el contexto específico de deduplicación de datos.
+En la siguiente práctica se puede reutilizar este dataset enriquecido para trabajar detección de duplicados, reglas de calidad de datos o primeras window functions como `ROW_NUMBER()`.
 
 ### Recursos adicionales
 
-| Recurso | URL | Utilidad |
-|---|---|---|
-| Documentación oficial Snowflake: CASE | https://docs.snowflake.com/en/sql-reference/functions/case | Referencia técnica completa con ejemplos |
-| Documentación oficial Snowflake: IFF | https://docs.snowflake.com/en/sql-reference/functions/iff | Referencia de la función IFF exclusiva de Snowflake |
-| Mode Analytics: SQL CASE Tutorial | https://mode.com/sql-tutorial/sql-case/ | Guía práctica orientada a análisis de datos |
-| W3Schools: SQL CASE Statement | https://www.w3schools.com/sql/sql_case.asp | Referencia rápida con ejemplos interactivos |
+| Recurso | URL |
+|---|---|
+| Documentación Snowflake: CASE | https://docs.snowflake.com/en/sql-reference/functions/case |
+| Documentación Snowflake: IFF | https://docs.snowflake.com/en/sql-reference/functions/iff |
+| Documentación Snowflake: COALESCE | https://docs.snowflake.com/en/sql-reference/functions/coalesce |
+| Documentación Snowflake: WITH / CTE | https://docs.snowflake.com/en/sql-reference/constructs/with |
 
 ---
