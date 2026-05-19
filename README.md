@@ -26,23 +26,23 @@ Cada uno de estos laboratorios está diseñado para ofrecerte una experiencia pr
   
   - Descripción: En esta práctica aplicarás CASE WHEN para segmentar clientes con reglas de negocio, combinando monto, frecuencia y antigüedad para generar un dataset listo para reportes.
     
-  - Duración estimada: 60 min
+  - ⏱️ Duración estimada: 60 min
 
 ### Capítulo 3
 
 - [Detección de duplicados y registros inconsistentes](Capitulo03/README.md#detección-de-duplicados-y-registros-inconsistentes)
   
   - Descripción: En esta práctica detectarás problemas de calidad de datos, como duplicados, nulos y referencias inválidas, para construir un reporte consolidado.
-  - 
-  - Duración estimada: 60 min
+    
+  - ⏱️ Duración estimada: 60 min
 
 ### Capítulo 4
 
 - [Análisis de rankings y secuencias con window functions](Capitulo04/README.md#análisis-de-rankings-y-secuencias-con-window-functions)
   
-  - Descripción: Actividad práctica guiada basada estrictamente en el contenido del módulo.
+  - Descripción: En esta práctica aplicarás funciones analíticas de Snowflake para crear rankings, comparar ventas entre períodos y calcular acumulados y promedios móviles usando ventanas, particiones y marcos de análisis.
     
-  - Duración estimada: 60 min
+  - ⏱️ Duración estimada: 60 min
 
 ### Capítulo 5
 
@@ -50,7 +50,7 @@ Cada uno de estos laboratorios está diseñado para ofrecerte una experiencia pr
   
   - Descripción: Actividad práctica guiada basada estrictamente en el contenido del módulo.
     
-  - Duración estimada: 50 min
+  - ⏱️ Duración estimada: 50 min
 
 ### Capítulo 6
 
@@ -58,7 +58,7 @@ Cada uno de estos laboratorios está diseñado para ofrecerte una experiencia pr
   
   - Descripción: Actividad práctica guiada basada estrictamente en el contenido del módulo.
     
-  - Duración estimada: 35 min
+  - ⏱️ Duración estimada: 35 min
 
 ### Capítulo 7
 
@@ -66,7 +66,7 @@ Cada uno de estos laboratorios está diseñado para ofrecerte una experiencia pr
   
   - Descripción: Actividad práctica guiada basada estrictamente en el contenido del módulo.
     
-  - Duración estimada: 45 min
+  - ⏱️ Duración estimada: 45 min
 
 ## 📬 **Contacto y más información**
 
