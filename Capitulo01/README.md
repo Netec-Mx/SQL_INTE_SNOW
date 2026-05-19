@@ -1200,3 +1200,5 @@ En el **Laboratorio 2**, profundizarás en el uso de subconsultas dentro de las 
 | Mode Analytics SQL Tutorial: Subqueries | https://mode.com/sql-tutorial/sql-sub-queries/ |
 
 ---
+
+*Lab 01-00-01 — Reestructuración de consultas con CTE y subqueries | LAB_SQL_INTERMEDIO | Módulo 1*
