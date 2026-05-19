@@ -1567,5 +1567,3 @@ Lab 05 — Series temporales con window functions
 | Documentación Snowflake: Window Functions | https://docs.snowflake.com/en/sql-reference/functions-analytic |
 
 ---
-
-> 📌 **Nota para el instructor:** Si el grupo termina antes de los 60 minutos, propón como extensión que los estudiantes intenten construir una vista (`CREATE OR REPLACE VIEW`) que consolide el reporte de calidad del Ejercicio 5.2, de forma que pueda ser consultada en cualquier momento sin re-ejecutar la lógica. Esto refuerza el concepto de reutilización de consultas complejas y conecta con las buenas prácticas de escritura SQL del curso.
