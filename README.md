@@ -56,7 +56,7 @@ Cada uno de estos laboratorios está diseñado para ofrecerte una experiencia pr
 
 - [Validación y reconciliación de datasets](Capitulo06/README.md#validación-y-reconciliación-de-datasets)
   
-  - Descripción: Actividad práctica guiada basada estrictamente en el contenido del módulo.
+  - Descripción: En esta práctica compararás datasets origen y destino para detectar discrepancias en un pipeline ETL/ELT, usando EXCEPT, INTERSECT, agregados, checksums y CTEs reutilizables para construir un reporte completo de reconciliación y calidad de datos.
     
   - ⏱️ Duración estimada: 35 min
 
