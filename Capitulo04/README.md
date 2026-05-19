@@ -1491,3 +1491,5 @@ En el **Laboratorio 5** aplicarás estas mismas técnicas a series temporales m�
 | Mode Analytics: SQL Window Functions Tutorial | https://mode.com/sql-tutorial/sql-window-functions/ |
 
 ---
+
+*Lab 04-00-01 — Análisis de rankings y secuencias con window functions | LAB_SQL_INTERMEDIO | Módulo 4*
