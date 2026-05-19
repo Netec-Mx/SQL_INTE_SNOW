@@ -2,20 +2,22 @@
 
 ## Metadatos
 
-| Atributo | Detalle |
+| Campo | Detalle |
 |---|---|
 | **Duración estimada** | 60 minutos |
 | **Complejidad** | Alta |
-| **Nivel Bloom** | Aplicar |
+| **Nivel Bloom** | Aplicar (*Apply*) |
 | **Módulo** | 3 — Calidad de datos y detección de anomalías |
-| **Laboratorio previo requerido** | Lab 01 y Lab 02 (o equivalente) |
-| **Plataforma** | Snowflake (Snowsight) |
+| **Plataforma** | Snowflake (Snowsight Worksheet) |
+| **Schema de práctica** | `LAB_SQL_INTERMEDIO.VENTAS` |
 
 ---
 
 ## Descripción General
 
-En este laboratorio trabajarás con versiones intencionalmente degradadas de las tablas del schema de práctica (`CLIENTES_DIRTY` y `PEDIDOS_DIRTY`) que contienen duplicados, valores nulos críticos y referencias inválidas. Aplicarás tres técnicas complementarias: detección de duplicados con `GROUP BY` + `HAVING`, marcado y aislamiento de duplicados con `ROW_NUMBER()`, y validación de integridad referencial con `LEFT JOIN` + `IS NULL`. Al finalizar, construirás un reporte consolidado de calidad de datos que integra todos los hallazgos. Este laboratorio introduce formalmente las **window functions** como puente conceptual hacia el Laboratorio 4.
+En este laboratorio trabajarás con versiones intencionalmente degradadas de las tablas del schema de práctica (`CLIENTES_DIRTY` y `PEDIDOS_DIRTY`) que contienen duplicados, valores nulos críticos y referencias inválidas. Aplicarás tres técnicas complementarias: detección de duplicados con `GROUP BY` + `HAVING`, marcado y aislamiento de duplicados con `ROW_NUMBER()`, y validación de integridad referencial con `LEFT JOIN` + `IS NULL`. Al finalizar, construirás un reporte consolidado de calidad de datos que integra todos los hallazgos.
+
+Este laboratorio introduce formalmente las **window functions** como puente conceptual hacia el Laboratorio 4.
 
 ---
 
@@ -23,953 +25,1538 @@ En este laboratorio trabajarás con versiones intencionalmente degradadas de las
 
 Al completar este laboratorio serás capaz de:
 
-- [ ] Detectar registros duplicados usando `GROUP BY` con `HAVING COUNT(*) > 1` sobre claves simples y compuestas
-- [ ] Aplicar `ROW_NUMBER() OVER(PARTITION BY ... ORDER BY ...)` para numerar duplicados e identificar el registro canónico a conservar
-- [ ] Utilizar la cláusula `QUALIFY` de Snowflake para filtrar resultados de window functions directamente en la consulta
-- [ ] Validar integridad referencial entre tablas mediante `LEFT JOIN` con filtro `WHERE ... IS NULL` para detectar registros huérfanos
-- [ ] Construir un reporte de calidad de datos que consolide duplicados, nulos críticos e inconsistencias de referencia
+- [ ] Detectar registros duplicados usando `GROUP BY` con `HAVING COUNT(*) > 1` sobre claves simples y compuestas.
+- [ ] Aplicar `ROW_NUMBER() OVER(PARTITION BY ... ORDER BY ...)` para numerar duplicados e identificar el registro canónico a conservar.
+- [ ] Utilizar la cláusula `QUALIFY` de Snowflake para filtrar resultados de window functions directamente en la consulta.
+- [ ] Validar integridad referencial entre tablas mediante `LEFT JOIN` con filtro `WHERE ... IS NULL` para detectar registros huérfanos.
+- [ ] Construir un reporte de calidad de datos que consolide duplicados, nulos críticos e inconsistencias de referencia.
 
 ---
 
 ## Prerrequisitos
 
-### Conocimientos Previos
+### Conocimientos previos
 
-| Área | Nivel Requerido |
+| Área | Nivel requerido |
 |---|---|
 | `SELECT`, `FROM`, `WHERE`, `ORDER BY` | Sólido |
 | `GROUP BY` con funciones de agregación (`COUNT`, `SUM`) | Sólido |
 | `HAVING` para filtrado de grupos | Sólido |
-| `JOIN` (especialmente `LEFT JOIN`) | Intermedio |
+| `JOIN`, especialmente `LEFT JOIN` | Intermedio |
 | Concepto de `NULL` y operadores `IS NULL` / `IS NOT NULL` | Intermedio |
-| Concepto introductorio de window functions | Básico (suficiente con la introducción conceptual) |
+| Concepto introductorio de window functions | Básico |
 
-### Acceso y Configuración
+### Acceso y configuración
 
-- Cuenta activa en Snowflake (trial o corporativa) con acceso a Snowsight
-- Script `00_setup_laboratorios.sql` ejecutado previamente por el instructor
-- Rol con permisos `SELECT` sobre el schema `LAB_SQL_INTERMEDIO.VENTAS`
-- Warehouse `X-SMALL` disponible y en estado `STARTED` o `SUSPENDED` (se activa automáticamente)
+| Requisito | Detalle |
+|---|---|
+| Cuenta Snowflake activa | Trial o corporativa con rol que permita crear objetos de laboratorio |
+| Script de setup ejecutado | No se asume script previo. Esta práctica incluye el setup completo de base, schema, tablas limpias y tablas dirty. |
+| Database disponible | `LAB_SQL_INTERMEDIO` |
+| Schema disponible | `LAB_SQL_INTERMEDIO.VENTAS` |
+| Tablas requeridas | `CLIENTES`, `PEDIDOS`, `CLIENTES_DIRTY`, `PEDIDOS_DIRTY`, creadas en el Paso 0 |
+| Warehouse activo | `COMPUTE_WH` (tamaño `X-SMALL`) |
 
 ---
 
-## Entorno del Laboratorio
+## Entorno de Laboratorio
 
-### Requisitos de Hardware y Software
+### Hardware recomendado
 
 | Componente | Mínimo | Recomendado |
 |---|---|---|
-| RAM | 8 GB | 16 GB |
 | Procesador | Intel Core i5 / AMD Ryzen 5 (64-bit) | Intel Core i7 / AMD Ryzen 7 |
-| Resolución | 1280×768 | 1920×1080 |
+| RAM | 8 GB | 16 GB |
+| Almacenamiento libre | 500 MB | 2 GB |
 | Conexión a Internet | 10 Mbps | 25 Mbps |
-| Navegador | Chrome 110+, Firefox 110+, Edge 110+, Safari 16+ | Chrome última versión |
-| Snowflake Edition | Trial o Enterprise | Enterprise |
+| Resolución de pantalla | 1280×768 | 1920×1080 |
 
-### Estructura de Datos del Laboratorio
+### Software requerido
 
-Este laboratorio utiliza las siguientes tablas del schema `LAB_SQL_INTERMEDIO.VENTAS`:
-
-| Tabla | Descripción | Problema intencionado |
+| Software | Versión mínima | Uso |
 |---|---|---|
-| `CLIENTES_DIRTY` | Versión degradada de CLIENTES | Duplicados por `EMAIL` y `CLIENTE_ID` |
-| `PEDIDOS_DIRTY` | Versión degradada de PEDIDOS | Duplicados por `PEDIDO_ID`, nulos en `CLIENTE_ID`, referencias inválidas |
-| `CLIENTES` | Tabla limpia de referencia | Sin problemas (usada para comparación) |
-| `PEDIDOS` | Tabla limpia de referencia | Sin problemas (usada para comparación) |
+| Navegador web (Chrome / Firefox / Edge / Safari) | 110+ / 110+ / 110+ / 16+ | Acceso a Snowsight |
+| Snowflake (Snowsight) | Versión web actual | Ejecución de consultas SQL |
+| Visual Studio Code *(opcional)* | 1.80+ | Edición de scripts localmente |
+| SnowSQL *(opcional)* | 1.2.x+ | Ejecución desde terminal |
 
-### Comandos de Configuración Inicial
+---
 
-Ejecuta los siguientes comandos al inicio del laboratorio para establecer el contexto correcto:
+## Organización recomendada de Workspace en Snowsight
+
+Para que la práctica sea ordenada y reutilizable, trabaja con un Workspace y 2 folders. En esta práctica se usa la palabra **workspace** como una separación lógica de trabajo dentro de Snowsight; técnicamente, en Snowflake trabajarás con **Workspace**.
+
+| Workspace / Worksheet | Folder | Nombre sugerido | Uso |
+|---|---|---|---|
+| `SNOWLABS-INT` | `SETUP-LABS` | `03_SETUP_DATOS_DUPLICADOS_DIRTY` | Crear database, schema, tablas limpias, tablas dirty y datos de prueba. Se ejecuta una vez al inicio o cuando quieras reiniciar el laboratorio. |
+| `SNOWLABS-INT` | `SCRIPT-LABS` | `03_LAB_DUPLICADOS_CALIDAD_DATOS` | Ejecutar los ejercicios del laboratorio sin mezclar el script de carga de datos. |
+
+---
+
+## Paso 0 — Preparación del ambiente y carga de datos
+
+### Paso 0.0 — Crear el workspace de las prácticas
+
+1. Entra a **Snowsight**.
+2. Da clic en la opción **Projects**.
+3. Clic en **+**.
+4. Selecciona la opción **Private workspace**.
+5. Nómbralo: **`SNOWLABS-INT`**.
+6. Clic en **Create**.
+
+### Paso 0.0.1 — Crear el folder y script que carga los datos
+
+1. Dentro del workspace **`SNOWLABS-INT`**, da clic en **+ Add new**.
+2. Clic en **Folder** y nómbralo: **`SETUP-LABS`**.
+3. Dentro del folder **`SETUP-LABS`**, da clic en el símbolo **+**.
+4. Crea un archivo de tipo **SQL**.
+5. Nómbralo: **`03_SETUP_DATOS_DUPLICADOS_DIRTY`**.
+6. Pega ahí el siguiente script completo.
+7. Ejecuta el script completo antes de comenzar el laboratorio.
+
+Este dataset está diseñado para activar todos los escenarios de la práctica:
+
+- Clientes duplicados por `ID_CLIENTE`.
+- Clientes duplicados por `EMAIL`.
+- Clientes con `EMAIL` nulo.
+- Pedidos duplicados por `ID_PEDIDO`.
+- Pedidos duplicados por combinación de negocio: `ID_CLIENTE + FECHA_PEDIDO + MONTO_TOTAL`.
+- Pedidos con `ID_CLIENTE` nulo.
+- Pedidos con referencia a clientes inexistentes.
+- Clientes sin pedidos.
+- Tablas limpias de referencia para comparación.
 
 ```sql
--- Establecer contexto de trabajo
-USE ROLE ANALYST;
-USE WAREHOUSE LAB_WH;
+-- 03_setup_datos_duplicados_dirty_snowflake.sql
+-- Práctica Snowflake Intermedio
+-- Dataset para completar el laboratorio:
+-- Detección de duplicados y registros inconsistentes
+--
+-- Objetivo del dataset:
+-- 1) Mantener tablas limpias de referencia: CLIENTES y PEDIDOS.
+-- 2) Crear tablas degradadas: CLIENTES_DIRTY y PEDIDOS_DIRTY.
+-- 3) Incluir duplicados técnicos por ID.
+-- 4) Incluir duplicados de negocio por EMAIL o combinación de pedido.
+-- 5) Incluir valores nulos críticos.
+-- 6) Incluir referencias inválidas para practicar LEFT JOIN + IS NULL.
+--
+-- Importante:
+-- Esta práctica usa los nombres de columnas estandarizados desde el Lab 02:
+-- ID_CLIENTE, ID_PEDIDO, MONTO_TOTAL y ESTADO_PEDIDO.
+
+USE WAREHOUSE COMPUTE_WH;
+
+CREATE DATABASE IF NOT EXISTS LAB_SQL_INTERMEDIO;
+USE DATABASE LAB_SQL_INTERMEDIO;
+
+CREATE SCHEMA IF NOT EXISTS VENTAS;
+USE SCHEMA VENTAS;
+
+-- Opcional para repetir el laboratorio desde cero.
+DROP TABLE IF EXISTS PEDIDOS_DIRTY;
+DROP TABLE IF EXISTS CLIENTES_DIRTY;
+DROP TABLE IF EXISTS PEDIDOS;
+DROP TABLE IF EXISTS CLIENTES;
+
+-- ============================================================
+-- TABLAS LIMPIAS DE REFERENCIA
+-- ============================================================
+
+CREATE OR REPLACE TABLE CLIENTES (
+    ID_CLIENTE NUMBER(10,0) NOT NULL,
+    NOMBRE VARCHAR(120) NOT NULL,
+    EMAIL VARCHAR(150),
+    FECHA_REGISTRO DATE NOT NULL,
+    CIUDAD VARCHAR(80) NOT NULL,
+    PAIS VARCHAR(80) NOT NULL,
+    CONSTRAINT PK_CLIENTES PRIMARY KEY (ID_CLIENTE)
+);
+
+CREATE OR REPLACE TABLE PEDIDOS (
+    ID_PEDIDO NUMBER(10,0) NOT NULL,
+    ID_CLIENTE NUMBER(10,0) NOT NULL,
+    FECHA_PEDIDO DATE NOT NULL,
+    MONTO_TOTAL NUMBER(12,2) NOT NULL,
+    ESTADO_PEDIDO VARCHAR(30) NOT NULL,
+    CANAL VARCHAR(40),
+    CONSTRAINT PK_PEDIDOS PRIMARY KEY (ID_PEDIDO),
+    CONSTRAINT FK_PEDIDOS_CLIENTES FOREIGN KEY (ID_CLIENTE) REFERENCES CLIENTES(ID_CLIENTE)
+);
+
+INSERT INTO CLIENTES (ID_CLIENTE, NOMBRE, EMAIL, FECHA_REGISTRO, CIUDAD, PAIS) VALUES
+    (1,  'Ana Torres',       'ana.torres@demo.com',       '2023-01-15', 'CDMX',        'México'),
+    (2,  'Luis Martínez',    'luis.martinez@demo.com',    '2023-03-02', 'CDMX',        'México'),
+    (3,  'María López',      'maria.lopez@demo.com',      '2023-02-20', 'Guadalajara', 'México'),
+    (4,  'Carlos Hernández', 'carlos.hernandez@demo.com', '2023-05-10', 'Guadalajara', 'México'),
+    (5,  'Sofía Ramírez',    'sofia.ramirez@demo.com',    '2023-06-18', 'Monterrey',   'México'),
+    (6,  'Jorge Castillo',   'jorge.castillo@demo.com',   '2023-07-22', 'Monterrey',   'México'),
+    (7,  'Elena Flores',     'elena.flores@demo.com',     '2023-08-04', 'Puebla',      'México'),
+    (8,  'Diego Sánchez',    'diego.sanchez@demo.com',    '2023-09-11', 'Puebla',      'México'),
+    (9,  'Valeria Cruz',     'valeria.cruz@demo.com',     '2023-10-05', 'Mérida',      'México'),
+    (10, 'Roberto Díaz',     'roberto.diaz@demo.com',     '2023-11-01', 'Mérida',      'México'),
+    (11, 'Paola Medina',     'paola.medina@demo.com',     '2024-02-14', 'Querétaro',   'México'),
+    (12, 'Andrés Navarro',   'andres.navarro@demo.com',   '2024-04-03', 'Querétaro',   'México');
+
+INSERT INTO PEDIDOS (ID_PEDIDO, ID_CLIENTE, FECHA_PEDIDO, MONTO_TOTAL, ESTADO_PEDIDO, CANAL) VALUES
+    (2001, 1,  '2024-01-12',  500.00, 'COMPLETADO', 'Web'),
+    (2002, 1,  '2024-03-15', 1000.00, 'COMPLETADO', 'Ejecutivo'),
+    (2003, 2,  '2024-02-03',  200.00, 'COMPLETADO', 'Web'),
+    (2004, 2,  '2023-11-21',  500.00, 'ENVIADO',    'Web'),
+    (2005, 3,  '2024-04-09',  300.00, 'COMPLETADO', 'Marketplace'),
+    (2006, 3,  '2025-01-18',  600.00, 'COMPLETADO', 'Ejecutivo'),
+    (2007, 4,  '2024-05-06',  700.00, 'COMPLETADO', 'Ejecutivo'),
+    (2008, 4,  '2024-09-19',  900.00, 'COMPLETADO', 'Ejecutivo'),
+    (2009, 5,  '2023-12-05',  500.00, 'COMPLETADO', 'Web'),
+    (2010, 5,  '2024-06-14',  600.00, 'COMPLETADO', 'Marketplace'),
+    (2011, 6,  '2024-07-07',  100.00, 'COMPLETADO', 'Web'),
+    (2012, 6,  '2024-08-25',  200.00, 'COMPLETADO', 'Web'),
+    (2013, 7,  '2024-10-02',  400.00, 'COMPLETADO', 'Ejecutivo'),
+    (2014, 7,  '2025-02-12',  900.00, 'COMPLETADO', 'Ejecutivo'),
+    (2015, 8,  '2024-11-17',  650.00, 'COMPLETADO', 'Marketplace'),
+    (2016, 8,  '2024-12-09',  650.00, 'COMPLETADO', 'Marketplace'),
+    (2017, 9,  '2024-01-28',  800.00, 'COMPLETADO', 'Ejecutivo'),
+    (2018, 9,  '2025-03-03', 1200.00, 'COMPLETADO', 'Ejecutivo'),
+    (2019, 10, '2023-10-30',  200.00, 'COMPLETADO', 'Web'),
+    (2020, 10, '2024-04-22',  400.00, 'COMPLETADO', 'Web'),
+    (2021, 11, '2025-04-10',  350.00, 'EN_PROCESO', 'Web'),
+    (2022, 12, '2025-05-01',  450.00, 'COMPLETADO', 'Web');
+
+-- ============================================================
+-- TABLAS DIRTY
+-- ============================================================
+
+CREATE OR REPLACE TABLE CLIENTES_DIRTY (
+    ID_CLIENTE NUMBER(10,0),
+    NOMBRE VARCHAR(120),
+    EMAIL VARCHAR(150),
+    FECHA_REGISTRO DATE,
+    CIUDAD VARCHAR(80),
+    PAIS VARCHAR(80),
+    FUENTE_CARGA VARCHAR(40),
+    FECHA_CARGA TIMESTAMP_NTZ
+);
+
+CREATE OR REPLACE TABLE PEDIDOS_DIRTY (
+    ID_PEDIDO NUMBER(10,0),
+    ID_CLIENTE NUMBER(10,0),
+    FECHA_PEDIDO DATE,
+    MONTO_TOTAL NUMBER(12,2),
+    ESTADO_PEDIDO VARCHAR(30),
+    CANAL VARCHAR(40),
+    FUENTE_CARGA VARCHAR(40),
+    FECHA_CARGA TIMESTAMP_NTZ
+);
+
+-- Carga base limpia hacia CLIENTES_DIRTY.
+INSERT INTO CLIENTES_DIRTY
+SELECT
+    ID_CLIENTE,
+    NOMBRE,
+    EMAIL,
+    FECHA_REGISTRO,
+    CIUDAD,
+    PAIS,
+    'CRM_BASE' AS FUENTE_CARGA,
+    TO_TIMESTAMP_NTZ('2025-05-01 08:00:00') AS FECHA_CARGA
+FROM CLIENTES;
+
+-- Problemas intencionales en CLIENTES_DIRTY.
+INSERT INTO CLIENTES_DIRTY
+    (ID_CLIENTE, NOMBRE, EMAIL, FECHA_REGISTRO, CIUDAD, PAIS, FUENTE_CARGA, FECHA_CARGA)
+VALUES
+    (3,  'Maria López',      'maria.lopez@demo.com',      '2023-02-20', 'Guadalajara', 'México', 'CRM_REPROCESO', '2025-05-02 09:10:00'),
+    (5,  'Sofia Ramírez',    'sofia.ramirez@demo.com',    '2023-06-18', 'Monterrey',   'México', 'CRM_REPROCESO', '2025-05-02 09:15:00'),
+    (8,  'Diego Sánchez',    NULL,                        '2023-09-11', 'Puebla',      'México', 'CRM_REPROCESO', '2025-05-02 09:20:00'),
+    (13, 'Ana T.',           'ana.torres@demo.com',       '2024-01-20', 'CDMX',        'México', 'IMPORT_EXCEL',  '2025-05-03 10:00:00'),
+    (14, 'Roberto Diaz',     'roberto.diaz@demo.com',     '2024-03-10', 'Mérida',      'México', 'IMPORT_EXCEL',  '2025-05-03 10:05:00'),
+    (15, 'Cliente Sin Email', NULL,                        '2025-04-25', 'Toluca',      'México', 'FORM_WEB',      '2025-05-03 11:00:00'),
+    (16, 'Cliente Sin Pedido','cliente.sinpedido@demo.com','2025-04-27', 'León',        'México', 'FORM_WEB',      '2025-05-03 11:10:00');
+
+-- Carga base limpia hacia PEDIDOS_DIRTY.
+INSERT INTO PEDIDOS_DIRTY
+SELECT
+    ID_PEDIDO,
+    ID_CLIENTE,
+    FECHA_PEDIDO,
+    MONTO_TOTAL,
+    ESTADO_PEDIDO,
+    CANAL,
+    'ERP_BASE' AS FUENTE_CARGA,
+    TO_TIMESTAMP_NTZ('2025-05-01 08:30:00') AS FECHA_CARGA
+FROM PEDIDOS;
+
+-- Problemas intencionales en PEDIDOS_DIRTY.
+INSERT INTO PEDIDOS_DIRTY
+    (ID_PEDIDO, ID_CLIENTE, FECHA_PEDIDO, MONTO_TOTAL, ESTADO_PEDIDO, CANAL, FUENTE_CARGA, FECHA_CARGA)
+VALUES
+    (2006, 3,   '2025-01-18',  600.00, 'COMPLETADO', 'Ejecutivo',   'ERP_REPROCESO', '2025-05-02 12:00:00'),
+    (2012, 6,   '2024-08-25',  200.00, 'COMPLETADO', 'Web',         'ERP_REPROCESO', '2025-05-02 12:05:00'),
+    (2015, 8,   '2024-11-17',  650.00, 'COMPLETADO', 'Marketplace', 'ERP_REPROCESO', '2025-05-02 12:10:00'),
+    (3001, 1,   '2024-03-15', 1000.00, 'COMPLETADO', 'Ejecutivo',   'API_DUP',       '2025-05-03 13:00:00'),
+    (3002, 5,   '2024-06-14',  600.00, 'COMPLETADO', 'Marketplace', 'API_DUP',       '2025-05-03 13:05:00'),
+    (3003, NULL,'2025-04-20',  750.00, 'COMPLETADO', 'Web',         'FORM_ERROR',    '2025-05-03 14:00:00'),
+    (3004, 999, '2025-04-21', 1200.00, 'COMPLETADO', 'Web',         'FORM_ERROR',    '2025-05-03 14:05:00'),
+    (3005, 998, '2025-04-22',  300.00, 'ENVIADO',    'Ejecutivo',   'FORM_ERROR',    '2025-05-03 14:10:00');
+
+-- Validación rápida del dataset.
+SELECT 'CLIENTES' AS TABLA, COUNT(*) AS FILAS FROM CLIENTES
+UNION ALL
+SELECT 'PEDIDOS' AS TABLA, COUNT(*) AS FILAS FROM PEDIDOS
+UNION ALL
+SELECT 'CLIENTES_DIRTY' AS TABLA, COUNT(*) AS FILAS FROM CLIENTES_DIRTY
+UNION ALL
+SELECT 'PEDIDOS_DIRTY' AS TABLA, COUNT(*) AS FILAS FROM PEDIDOS_DIRTY
+ORDER BY TABLA;
+
+-- Resultado esperado:
+-- CLIENTES        = 12
+-- CLIENTES_DIRTY  = 19
+-- PEDIDOS         = 22
+-- PEDIDOS_DIRTY   = 30
+```
+
+---
+
+### Paso 0.0.2 — Crear el folder y script de laboratorio
+
+1. Da clic en el botón **+ Add new**.
+2. Clic en **Folder** y nómbralo: **`SCRIPT-LABS`**.
+3. Dentro de **`SCRIPT-LABS`**, crea un archivo de tipo **SQL**.
+4. Nómbralo: **`03_LAB_DUPLICADOS_CALIDAD_DATOS`**.
+5. Usa este archivo para ejecutar los ejercicios 1, 2, 3, 4 y 5.
+6. **No pegues aquí el script de carga completo; solo usa las consultas de análisis del laboratorio.**
+
+---
+
+### Paso 0.1 — Confirmar el contexto de trabajo
+
+Dentro del archivo **`03_LAB_DUPLICADOS_CALIDAD_DATOS`**, ejecuta:
+
+```sql
+USE WAREHOUSE COMPUTE_WH;
 USE DATABASE LAB_SQL_INTERMEDIO;
 USE SCHEMA VENTAS;
 
--- Verificar que el warehouse está activo
-SELECT CURRENT_WAREHOUSE(), CURRENT_DATABASE(), CURRENT_SCHEMA();
+SELECT
+    CURRENT_WAREHOUSE() AS WAREHOUSE_ACTUAL,
+    CURRENT_DATABASE()  AS DATABASE_ACTUAL,
+    CURRENT_SCHEMA()    AS SCHEMA_ACTUAL;
 ```
 
 **Resultado esperado:**
 
-| CURRENT_WAREHOUSE() | CURRENT_DATABASE() | CURRENT_SCHEMA() |
+| WAREHOUSE_ACTUAL | DATABASE_ACTUAL | SCHEMA_ACTUAL |
 |---|---|---|
-| LAB_WH | LAB_SQL_INTERMEDIO | VENTAS |
-
-> ⚠️ **Importante sobre créditos:** Este laboratorio usa un warehouse `X-SMALL`. Al finalizar la sesión ejecuta `ALTER WAREHOUSE LAB_WH SUSPEND;` para evitar consumo innecesario de créditos de tu cuenta trial.
+| COMPUTE_WH | LAB_SQL_INTERMEDIO | VENTAS |
 
 ---
 
-## Pasos del Laboratorio
+### Paso 0.2 — Confirmar que las tablas quedaron disponibles
+
+Ejecuta:
+
+```sql
+SHOW TABLES;
+```
+
+**Resultado esperado:** deben aparecer al menos estas tablas:
+
+| Tabla | Uso en la práctica |
+|---|---|
+| `CLIENTES` | Tabla limpia de referencia para comparación. |
+| `PEDIDOS` | Tabla limpia de referencia para comparación. |
+| `CLIENTES_DIRTY` | Tabla degradada con duplicados, emails nulos e inconsistencias. |
+| `PEDIDOS_DIRTY` | Tabla degradada con duplicados, cliente nulo y referencias inválidas. |
 
 ---
 
-### Paso 1: Exploración Inicial de las Tablas con Problemas
+### Paso 0.3 — Validar volumen mínimo de datos
 
-**Objetivo:** Familiarizarse con la estructura y el contenido de las tablas `CLIENTES_DIRTY` y `PEDIDOS_DIRTY` antes de comenzar el análisis de calidad.
+```sql
+SELECT 'CLIENTES' AS TABLA, COUNT(*) AS FILAS FROM CLIENTES
+UNION ALL
+SELECT 'PEDIDOS' AS TABLA, COUNT(*) AS FILAS FROM PEDIDOS
+UNION ALL
+SELECT 'CLIENTES_DIRTY' AS TABLA, COUNT(*) AS FILAS FROM CLIENTES_DIRTY
+UNION ALL
+SELECT 'PEDIDOS_DIRTY' AS TABLA, COUNT(*) AS FILAS FROM PEDIDOS_DIRTY
+ORDER BY TABLA;
+```
+
+**Resultado esperado:**
+
+| TABLA | FILAS |
+|---|---:|
+| CLIENTES | 12 |
+| CLIENTES_DIRTY | 19 |
+| PEDIDOS | 22 |
+| PEDIDOS_DIRTY | 30 |
+
+---
+
+### Paso 0.4 — Validar duplicados esperados
+
+```sql
+SELECT 'Duplicados por ID_CLIENTE' AS PROBLEMA, COUNT(*) AS CASOS
+FROM (
+    SELECT ID_CLIENTE
+    FROM CLIENTES_DIRTY
+    GROUP BY ID_CLIENTE
+    HAVING COUNT(*) > 1
+)
+
+UNION ALL
+
+SELECT 'Duplicados por EMAIL', COUNT(*)
+FROM (
+    SELECT EMAIL
+    FROM CLIENTES_DIRTY
+    WHERE EMAIL IS NOT NULL
+    GROUP BY EMAIL
+    HAVING COUNT(*) > 1
+)
+
+UNION ALL
+
+SELECT 'Duplicados por ID_PEDIDO', COUNT(*)
+FROM (
+    SELECT ID_PEDIDO
+    FROM PEDIDOS_DIRTY
+    GROUP BY ID_PEDIDO
+    HAVING COUNT(*) > 1
+)
+
+UNION ALL
+
+SELECT 'Duplicados compuestos en pedidos', COUNT(*)
+FROM (
+    SELECT ID_CLIENTE, FECHA_PEDIDO, MONTO_TOTAL
+    FROM PEDIDOS_DIRTY
+    WHERE ID_CLIENTE IS NOT NULL
+      AND FECHA_PEDIDO IS NOT NULL
+      AND MONTO_TOTAL IS NOT NULL
+    GROUP BY ID_CLIENTE, FECHA_PEDIDO, MONTO_TOTAL
+    HAVING COUNT(*) > 1
+);
+```
+
+**Resultado esperado:** todos los conteos deben ser mayores que `0`.
+
+---
+
+### Paso 0.5 — Validar nulos e inconsistencias esperadas
+
+```sql
+SELECT 'Emails nulos en CLIENTES_DIRTY' AS PROBLEMA, COUNT(*) AS CASOS
+FROM CLIENTES_DIRTY
+WHERE EMAIL IS NULL
+
+UNION ALL
+
+SELECT 'Pedidos con ID_CLIENTE nulo', COUNT(*)
+FROM PEDIDOS_DIRTY
+WHERE ID_CLIENTE IS NULL
+
+UNION ALL
+
+SELECT 'Pedidos con cliente inexistente', COUNT(*)
+FROM PEDIDOS_DIRTY P
+LEFT JOIN CLIENTES_DIRTY C
+    ON P.ID_CLIENTE = C.ID_CLIENTE
+WHERE P.ID_CLIENTE IS NOT NULL
+  AND C.ID_CLIENTE IS NULL
+
+UNION ALL
+
+SELECT 'Clientes sin pedidos', COUNT(*)
+FROM CLIENTES_DIRTY C
+LEFT JOIN PEDIDOS_DIRTY P
+    ON C.ID_CLIENTE = P.ID_CLIENTE
+WHERE P.ID_PEDIDO IS NULL;
+```
+
+**Resultado esperado:** todos los conteos deben ser mayores que `0`.
+
+---
+
+## Ejercicios Paso a Paso
+
+---
+
+### Ejercicio 1 — Exploración inicial de las tablas con problemas
+
+**Objetivo:** Familiarizarte con la estructura y el contenido de las tablas `CLIENTES_DIRTY` y `PEDIDOS_DIRTY` antes de comenzar el análisis de calidad.
 
 #### Instrucciones
 
-**1.1** Examina la estructura y primeras filas de `CLIENTES_DIRTY`:
+**Paso 1.1 — Examinar la estructura de las tablas dirty**
+
+```sql
+DESCRIBE TABLE CLIENTES_DIRTY;
+DESCRIBE TABLE PEDIDOS_DIRTY;
+```
+
+**Paso 1.2 — Examina la estructura y primeras filas de `CLIENTES_DIRTY`**
 
 ```sql
 -- Vista previa de CLIENTES_DIRTY
 SELECT *
 FROM CLIENTES_DIRTY
+ORDER BY ID_CLIENTE, FECHA_CARGA
 LIMIT 20;
 ```
 
-**1.2** Examina la estructura y primeras filas de `PEDIDOS_DIRTY`:
+**Paso 1.3 — Examina la estructura y primeras filas de `PEDIDOS_DIRTY`**
 
 ```sql
 -- Vista previa de PEDIDOS_DIRTY
 SELECT *
 FROM PEDIDOS_DIRTY
-LIMIT 20;
+ORDER BY ID_PEDIDO, FECHA_CARGA
+LIMIT 30;
 ```
 
-**1.3** Obtén un conteo general de ambas tablas para tener una línea base:
+**Paso 1.4 — Obten un conteo general de tablas limpias y dirty**
 
 ```sql
--- Conteo de registros en ambas tablas
-SELECT
-    'CLIENTES_DIRTY'  AS tabla,
-    COUNT(*)          AS total_registros
-FROM CLIENTES_DIRTY
-
+SELECT 'CLIENTES_DIRTY' AS TABLA, COUNT(*) AS TOTAL_REGISTROS FROM CLIENTES_DIRTY
 UNION ALL
-
-SELECT
-    'PEDIDOS_DIRTY'   AS tabla,
-    COUNT(*)          AS total_registros
-FROM PEDIDOS_DIRTY
-
+SELECT 'PEDIDOS_DIRTY', COUNT(*) FROM PEDIDOS_DIRTY
 UNION ALL
-
-SELECT
-    'CLIENTES (limpia)' AS tabla,
-    COUNT(*)            AS total_registros
-FROM CLIENTES
-
+SELECT 'CLIENTES (limpia)', COUNT(*) FROM CLIENTES
 UNION ALL
-
-SELECT
-    'PEDIDOS (limpia)'  AS tabla,
-    COUNT(*)            AS total_registros
-FROM PEDIDOS;
+SELECT 'PEDIDOS (limpia)', COUNT(*) FROM PEDIDOS;
 ```
 
-**1.4** Identifica cuántos valores nulos existen en columnas críticas de cada tabla:
+**Paso 1.5 — Identificar nulos en columnas críticas de `CLIENTES_DIRTY`**
 
 ```sql
 -- Diagnóstico de nulos en CLIENTES_DIRTY
 SELECT
-    COUNT(*)                                         AS total_filas,
-    COUNT(CLIENTE_ID)                                AS cliente_id_no_nulos,
-    COUNT(*) - COUNT(CLIENTE_ID)                     AS cliente_id_nulos,
-    COUNT(EMAIL)                                     AS email_no_nulos,
-    COUNT(*) - COUNT(EMAIL)                          AS email_nulos,
-    COUNT(NOMBRE)                                    AS nombre_no_nulos,
-    COUNT(*) - COUNT(NOMBRE)                         AS nombre_nulos
+    COUNT(*)                                         AS TOTAL_FILAS,
+    COUNT(ID_CLIENTE)                                AS ID_CLIENTE_NO_NULOS,
+    COUNT(*) - COUNT(ID_CLIENTE)                     AS ID_CLIENTE_NULOS,
+    COUNT(EMAIL)                                     AS EMAIL_NO_NULOS,
+    COUNT(*) - COUNT(EMAIL)                          AS EMAIL_NULOS,
+    COUNT(NOMBRE)                                    AS NOMBRE_NO_NULOS,
+    COUNT(*) - COUNT(NOMBRE)                         AS NOMBRE_NULOS
 FROM CLIENTES_DIRTY;
 ```
+
+**Paso 1.6 — Identificar nulos en columnas críticas de `PEDIDOS_DIRTY`**
 
 ```sql
 -- Diagnóstico de nulos en PEDIDOS_DIRTY
 SELECT
-    COUNT(*)                                         AS total_filas,
-    COUNT(PEDIDO_ID)                                 AS pedido_id_no_nulos,
-    COUNT(*) - COUNT(PEDIDO_ID)                      AS pedido_id_nulos,
-    COUNT(CLIENTE_ID)                                AS cliente_id_no_nulos,
-    COUNT(*) - COUNT(CLIENTE_ID)                     AS cliente_id_nulos,
-    COUNT(MONTO_TOTAL)                               AS monto_no_nulos,
-    COUNT(*) - COUNT(MONTO_TOTAL)                    AS monto_nulos
+    COUNT(*)                                         AS TOTAL_FILAS,
+    COUNT(ID_PEDIDO)                                 AS ID_PEDIDO_NO_NULOS,
+    COUNT(*) - COUNT(ID_PEDIDO)                      AS ID_PEDIDO_NULOS,
+    COUNT(ID_CLIENTE)                                AS ID_CLIENTE_NO_NULOS,
+    COUNT(*) - COUNT(ID_CLIENTE)                     AS ID_CLIENTE_NULOS,
+    COUNT(MONTO_TOTAL)                               AS MONTO_NO_NULOS,
+    COUNT(*) - COUNT(MONTO_TOTAL)                    AS MONTO_NULOS
 FROM PEDIDOS_DIRTY;
 ```
 
-#### Resultado Esperado
+#### Resultado esperado
 
-- `CLIENTES_DIRTY` debería tener más registros que `CLIENTES` (indicando duplicados introducidos)
-- `PEDIDOS_DIRTY` debería tener más registros que `PEDIDOS`
-- Deberías observar valores nulos en al menos `EMAIL` en `CLIENTES_DIRTY` y en `CLIENTE_ID` en `PEDIDOS_DIRTY`
-- La diferencia entre `COUNT(*)` y `COUNT(columna)` revela exactamente cuántos nulos hay en cada campo
+- `CLIENTES_DIRTY` debe tener más registros que `CLIENTES`, indicando duplicados introducidos.
+- `PEDIDOS_DIRTY` debe tener más registros que `PEDIDOS`.
+- Debes observar valores nulos en `EMAIL` dentro de `CLIENTES_DIRTY`.
+- Debes observar valores nulos en `ID_CLIENTE` dentro de `PEDIDOS_DIRTY`.
+- La diferencia entre `COUNT(*)` y `COUNT(columna)` revela exactamente cuántos nulos hay en cada campo.
 
 #### Verificación
 
-Anota los siguientes valores en tu hoja de trabajo (los usarás en el Paso 5):
+Anota los siguientes valores en tu hoja de trabajo. Los usarás en el Ejercicio 5.
 
 | Métrica | Valor observado |
 |---|---|
-| Total filas `CLIENTES_DIRTY` | \_\_\_\_\_ |
-| Total filas `CLIENTES` (limpia) | \_\_\_\_\_ |
-| Nulos en `EMAIL` de `CLIENTES_DIRTY` | \_\_\_\_\_ |
-| Total filas `PEDIDOS_DIRTY` | \_\_\_\_\_ |
-| Nulos en `CLIENTE_ID` de `PEDIDOS_DIRTY` | \_\_\_\_\_ |
+| Total filas `CLIENTES_DIRTY` | ______ |
+| Total filas `CLIENTES` limpia | ______ |
+| Nulos en `EMAIL` de `CLIENTES_DIRTY` | ______ |
+| Total filas `PEDIDOS_DIRTY` | ______ |
+| Nulos en `ID_CLIENTE` de `PEDIDOS_DIRTY` | ______ |
 
 ---
 
-### Paso 2: Detección de Duplicados con GROUP BY + HAVING
+### Ejercicio 2 — Detección de duplicados con `GROUP BY` + `HAVING`
 
 **Objetivo:** Aplicar la técnica de `GROUP BY` con `HAVING COUNT(*) > 1` para identificar claves repetidas en `CLIENTES_DIRTY` y `PEDIDOS_DIRTY`, tanto por clave simple como compuesta.
 
 #### Instrucciones
 
-**2.1** Detecta duplicados de `CLIENTE_ID` en `CLIENTES_DIRTY` (clave primaria que debería ser única):
+**Paso 2.1 — Detectar duplicados de `ID_CLIENTE` en `CLIENTES_DIRTY`**
 
 ```sql
--- Detección de CLIENTE_ID duplicados
+-- Detección de ID_CLIENTE duplicados
+-- ID_CLIENTE representa una clave técnica que debería ser única.
 SELECT
-    CLIENTE_ID,
-    COUNT(*) AS veces_registrado
+    ID_CLIENTE,
+    COUNT(*) AS VECES_REGISTRADO
 FROM CLIENTES_DIRTY
-GROUP BY CLIENTE_ID
+GROUP BY ID_CLIENTE
 HAVING COUNT(*) > 1
-ORDER BY veces_registrado DESC;
+ORDER BY VECES_REGISTRADO DESC, ID_CLIENTE;
 ```
 
-**2.2** Detecta duplicados por `EMAIL` (campo de negocio que también debería ser único):
+**Paso 2.2 — Detectar duplicados por `EMAIL`**
 
 ```sql
 -- Detección de EMAIL duplicados
+-- EMAIL funciona como identificador de negocio.
+-- Se excluyen NULL porque NULL no representa un email real.
 SELECT
     EMAIL,
-    COUNT(*) AS veces_registrado
+    COUNT(*) AS VECES_REGISTRADO
 FROM CLIENTES_DIRTY
+WHERE EMAIL IS NOT NULL
 GROUP BY EMAIL
 HAVING COUNT(*) > 1
-ORDER BY veces_registrado DESC;
+ORDER BY VECES_REGISTRADO DESC, EMAIL;
 ```
 
-> 💡 **Observa la diferencia:** Es posible que encuentres más duplicados por `EMAIL` que por `CLIENTE_ID`, o viceversa. Esto refleja diferentes tipos de problemas de carga: en algunos casos se duplicó el registro completo (mismo ID), en otros se crearon registros nuevos para el mismo cliente real (mismo email, ID diferente).
+> 💡 **Observa la diferencia:** Es posible encontrar más duplicados por `EMAIL` que por `ID_CLIENTE`, o viceversa. Esto refleja diferentes tipos de problemas de carga: en algunos casos se duplicó el registro completo con el mismo ID; en otros se crearon registros nuevos para el mismo cliente real usando el mismo email pero con ID diferente.
 
-**2.3** Calcula el total de registros de más que deben eliminarse en `CLIENTES_DIRTY`:
+**Paso 2.3 — Calcular registros sobrantes en `CLIENTES_DIRTY`**
 
 ```sql
--- Total de registros duplicados (sobrantes) por CLIENTE_ID
+-- Total de registros duplicados sobrantes por ID_CLIENTE
+-- Si un ID aparece 3 veces, sobran 2 registros.
 SELECT
-    SUM(veces_registrado - 1) AS registros_sobrantes
+    SUM(VECES_REGISTRADO - 1) AS REGISTROS_SOBRANTES
 FROM (
     SELECT
-        CLIENTE_ID,
-        COUNT(*) AS veces_registrado
+        ID_CLIENTE,
+        COUNT(*) AS VECES_REGISTRADO
     FROM CLIENTES_DIRTY
-    GROUP BY CLIENTE_ID
+    GROUP BY ID_CLIENTE
     HAVING COUNT(*) > 1
-) AS duplicados_cliente;
+) AS DUPLICADOS_CLIENTE;
 ```
 
-**2.4** Detecta duplicados de `PEDIDO_ID` en `PEDIDOS_DIRTY`:
+**Paso 2.4 — Detectar duplicados de `ID_PEDIDO` en `PEDIDOS_DIRTY`**
 
 ```sql
--- Detección de PEDIDO_ID duplicados
+-- Detección de ID_PEDIDO duplicados
+-- ID_PEDIDO representa una clave técnica que debería ser única.
 SELECT
-    PEDIDO_ID,
-    COUNT(*) AS veces_registrado
+    ID_PEDIDO,
+    COUNT(*) AS VECES_REGISTRADO
 FROM PEDIDOS_DIRTY
-GROUP BY PEDIDO_ID
+GROUP BY ID_PEDIDO
 HAVING COUNT(*) > 1
-ORDER BY veces_registrado DESC;
+ORDER BY VECES_REGISTRADO DESC, ID_PEDIDO;
 ```
 
-**2.5** Detecta duplicados compuestos en `PEDIDOS_DIRTY`: misma combinación de `CLIENTE_ID` + `FECHA_PEDIDO` + `MONTO_TOTAL` (posible doble procesamiento del mismo pedido):
+**Paso 2.5 — Detectar duplicados compuestos en `PEDIDOS_DIRTY`**
 
 ```sql
--- Duplicados compuestos: mismo cliente, misma fecha, mismo monto
+-- Duplicados compuestos:
+-- mismo cliente, misma fecha y mismo monto.
+-- Este patrón detecta posible doble procesamiento del mismo pedido,
+-- incluso cuando el ID_PEDIDO es diferente.
 SELECT
-    CLIENTE_ID,
+    ID_CLIENTE,
     FECHA_PEDIDO,
     MONTO_TOTAL,
-    COUNT(*) AS veces_registrado
+    COUNT(*) AS VECES_REGISTRADO
 FROM PEDIDOS_DIRTY
-WHERE CLIENTE_ID   IS NOT NULL
+WHERE ID_CLIENTE   IS NOT NULL
   AND FECHA_PEDIDO IS NOT NULL
   AND MONTO_TOTAL  IS NOT NULL
-GROUP BY CLIENTE_ID, FECHA_PEDIDO, MONTO_TOTAL
+GROUP BY ID_CLIENTE, FECHA_PEDIDO, MONTO_TOTAL
 HAVING COUNT(*) > 1
-ORDER BY veces_registrado DESC, FECHA_PEDIDO DESC;
+ORDER BY VECES_REGISTRADO DESC, FECHA_PEDIDO DESC;
 ```
 
-**2.6** Visualiza el detalle completo de los registros duplicados para poder compararlos. Usa un `INNER JOIN` contra el resultado de la detección:
+**Paso 2.6 — Visualizar detalle completo de clientes con `ID_CLIENTE` duplicado**
 
 ```sql
--- Ver filas completas de clientes con CLIENTE_ID duplicado
+-- Ver filas completas de clientes con ID_CLIENTE duplicado.
+-- El INNER JOIN permite recuperar el detalle completo después de detectar las claves duplicadas.
 SELECT
-    c.*
-FROM CLIENTES_DIRTY c
+    C.*
+FROM CLIENTES_DIRTY C
 INNER JOIN (
-    SELECT CLIENTE_ID
+    SELECT ID_CLIENTE
     FROM CLIENTES_DIRTY
-    GROUP BY CLIENTE_ID
+    GROUP BY ID_CLIENTE
     HAVING COUNT(*) > 1
-) dup ON c.CLIENTE_ID = dup.CLIENTE_ID
-ORDER BY c.CLIENTE_ID, c.FECHA_REGISTRO;
+) DUP
+    ON C.ID_CLIENTE = DUP.ID_CLIENTE
+ORDER BY C.ID_CLIENTE, C.FECHA_REGISTRO, C.FECHA_CARGA;
 ```
 
-#### Resultado Esperado
+**Paso 2.7 — Visualiza el detalle completo de los registros duplicados para poder compararlos. Usa un INNER JOIN contra el resultado de la detección:**
 
-- El paso 2.1 debe mostrar una lista de `CLIENTE_ID` que aparecen más de una vez
-- El paso 2.3 devuelve un número entero: la cantidad exacta de filas que sobran
-- El paso 2.5 puede revelar duplicados que no se detectarían solo por `PEDIDO_ID` (casos donde el ID es diferente pero el contenido es idéntico)
-- El paso 2.6 muestra pares o tríos de filas que representan el mismo cliente, permitiendo comparar qué campos difieren entre duplicados
+```sql
+-- Ver filas completas de pedidos con ID_PEDIDO duplicado.
+SELECT
+    P.*
+FROM PEDIDOS_DIRTY P
+INNER JOIN (
+    SELECT ID_PEDIDO
+    FROM PEDIDOS_DIRTY
+    GROUP BY ID_PEDIDO
+    HAVING COUNT(*) > 1
+) DUP
+    ON P.ID_PEDIDO = DUP.ID_PEDIDO
+ORDER BY P.ID_PEDIDO, P.FECHA_CARGA;
+```
+
+#### Resultado esperado
+
+- El paso 2.1 muestra una lista de `ID_CLIENTE` que aparecen más de una vez.
+- El paso 2.2 muestra emails repetidos que indican duplicados de negocio.
+- El paso 2.3 devuelve un número entero: la cantidad exacta de filas que sobran por duplicados de `ID_CLIENTE`.
+- El paso 2.5 revela duplicados que no se detectarían solo por `ID_PEDIDO`.
+- Los pasos 2.6 y 2.7 muestran pares o tríos de filas que representan el mismo cliente o pedido.
 
 #### Verificación
 
-Responde las siguientes preguntas con base en los resultados:
-
-1. ¿Cuántos `CLIENTE_ID` distintos tienen duplicados en `CLIENTES_DIRTY`?
-2. ¿El número de duplicados por `EMAIL` coincide con el de duplicados por `CLIENTE_ID`? ¿Qué indica si no coinciden?
-3. ¿Cuántos registros sobrantes calculó la subconsulta del paso 2.3?
+```sql
+-- Preguntas de análisis — responde en comentarios:
+-- 1. ¿Cuántos ID_CLIENTE distintos tienen duplicados en CLIENTES_DIRTY?
+-- 2. ¿El número de duplicados por EMAIL coincide con el de duplicados por ID_CLIENTE?
+-- 3. ¿Qué indica si no coinciden?
+-- 4. ¿Cuántos registros sobrantes calculó el Paso 2.3?
+-- 5. ¿Qué duplicado compuesto no se detectaría si solo revisas ID_PEDIDO?
+```
 
 ---
 
-### Paso 3: Deduplicación con ROW_NUMBER()
+### Ejercicio 3 — Deduplicación con `ROW_NUMBER()`
 
-**Objetivo:** Aplicar la función de ventana `ROW_NUMBER()` para numerar los duplicados dentro de cada grupo y aislar el registro canónico (el que se debe conservar) según un criterio de negocio definido.
+**Objetivo:** Aplicar la función de ventana `ROW_NUMBER()` para numerar los duplicados dentro de cada grupo y aislar el registro canónico, es decir, el registro que se debe conservar según un criterio de negocio definido.
 
-> 📘 **Concepto clave — Window Functions:** A diferencia de las funciones de agregación que colapsan múltiples filas en una sola, las window functions calculan un valor **para cada fila** considerando un conjunto de filas relacionadas (la "ventana"). `ROW_NUMBER()` asigna un número secuencial único a cada fila dentro de una partición. La sintaxis es: `ROW_NUMBER() OVER(PARTITION BY columna ORDER BY columna)`. La cláusula `PARTITION BY` define los grupos (como `GROUP BY`), y `ORDER BY` define el criterio de numeración.
+> 📘 **Concepto clave — Window Functions:** A diferencia de las funciones de agregación que colapsan múltiples filas en una sola, las window functions calculan un valor **para cada fila** considerando un conjunto de filas relacionadas, llamado "ventana". `ROW_NUMBER()` asigna un número secuencial único a cada fila dentro de una partición. La sintaxis es: `ROW_NUMBER() OVER(PARTITION BY columna ORDER BY columna)`. La cláusula `PARTITION BY` define los grupos, parecido a `GROUP BY`, y `ORDER BY` define el criterio de numeración.
 
 #### Instrucciones
 
-**3.1** Aplica `ROW_NUMBER()` para numerar los duplicados de `CLIENTE_ID`, ordenando por `FECHA_REGISTRO` ascendente (conservar el registro más antiguo como canónico):
+**Paso 3.1 — Aplica ROW_NUMBER() para numerar los duplicados de CLIENTE_ID, ordenando por FECHA_REGISTRO ascendente (conservar el registro más antiguo como canónico):**
 
 ```sql
--- Numerar duplicados de CLIENTE_ID con ROW_NUMBER()
--- El registro con rn = 1 es el que conservaríamos (más antiguo)
+-- Numerar registros por ID_CLIENTE con ROW_NUMBER()
+-- El registro con RN = 1 es el que conservaríamos.
+-- Criterio de negocio: conservar el registro más antiguo por FECHA_REGISTRO.
 SELECT
-    CLIENTE_ID,
+    ID_CLIENTE,
     NOMBRE,
     EMAIL,
     FECHA_REGISTRO,
+    FUENTE_CARGA,
+    FECHA_CARGA,
     ROW_NUMBER() OVER (
-        PARTITION BY CLIENTE_ID
-        ORDER BY FECHA_REGISTRO ASC
-    ) AS rn
+        PARTITION BY ID_CLIENTE
+        ORDER BY FECHA_REGISTRO ASC, FECHA_CARGA ASC
+    ) AS RN
 FROM CLIENTES_DIRTY
-ORDER BY CLIENTE_ID, rn;
+ORDER BY ID_CLIENTE, RN;
 ```
 
-Observa cómo cada grupo de `CLIENTE_ID` recibe numeración independiente comenzando en 1.
+Observa cómo cada grupo de CLIENTE_ID recibe numeración independiente comenzando en 1.
 
-**3.2** Construye una consulta que aísle **solo los duplicados** (filas con `rn > 1`), usando una subconsulta:
+**Paso 3.2 — Construye una consulta que aísle solo los duplicados (filas con rn > 1), usando una subconsulta:**
 
 ```sql
--- Aislar únicamente los registros duplicados (los que se eliminarían)
+-- Aislar únicamente los registros duplicados.
+-- Son las filas con RN > 1: registros que podrían eliminarse o revisarse.
 SELECT *
 FROM (
     SELECT
-        CLIENTE_ID,
+        ID_CLIENTE,
         NOMBRE,
         EMAIL,
         FECHA_REGISTRO,
+        FUENTE_CARGA,
+        FECHA_CARGA,
         ROW_NUMBER() OVER (
-            PARTITION BY CLIENTE_ID
-            ORDER BY FECHA_REGISTRO ASC
-        ) AS rn
+            PARTITION BY ID_CLIENTE
+            ORDER BY FECHA_REGISTRO ASC, FECHA_CARGA ASC
+        ) AS RN
     FROM CLIENTES_DIRTY
-) AS numerados
-WHERE rn > 1
-ORDER BY CLIENTE_ID, rn;
+) AS NUMERADOS
+WHERE RN > 1
+ORDER BY ID_CLIENTE, RN;
 ```
 
-**3.3** Usa la cláusula `QUALIFY` de Snowflake para lograr el mismo resultado de forma más concisa. `QUALIFY` permite filtrar directamente sobre el resultado de una window function sin necesidad de subconsulta:
+**Paso 3.3 — Usa la cláusula QUALIFY de Snowflake para lograr el mismo resultado de forma más concisa. QUALIFY permite filtrar directamente sobre el resultado de una window function sin necesidad de subconsulta:**
 
 ```sql
--- Equivalente con QUALIFY (sintaxis exclusiva de Snowflake)
+-- Equivalente con QUALIFY.
+-- QUALIFY permite filtrar directamente sobre el resultado de una window function
+-- sin necesidad de envolver la consulta en una subconsulta.
 SELECT
-    CLIENTE_ID,
+    ID_CLIENTE,
     NOMBRE,
     EMAIL,
     FECHA_REGISTRO,
+    FUENTE_CARGA,
+    FECHA_CARGA,
     ROW_NUMBER() OVER (
-        PARTITION BY CLIENTE_ID
-        ORDER BY FECHA_REGISTRO ASC
-    ) AS rn
+        PARTITION BY ID_CLIENTE
+        ORDER BY FECHA_REGISTRO ASC, FECHA_CARGA ASC
+    ) AS RN
 FROM CLIENTES_DIRTY
-QUALIFY rn > 1
-ORDER BY CLIENTE_ID, rn;
+QUALIFY RN > 1
+ORDER BY ID_CLIENTE, RN;
 ```
 
-> ⚠️ **Nota de portabilidad:** `QUALIFY` es una cláusula **exclusiva de Snowflake** y no existe en SQL estándar ni en motores como PostgreSQL o MySQL. Es una ventaja de la plataforma que mejora la legibilidad, pero si necesitas portar este código a otro motor, deberás usar la versión con subconsulta del paso 3.2.
+> ⚠️ **Nota de portabilidad:** `QUALIFY` es una cláusula soportada por Snowflake y resulta muy útil para filtrar window functions de forma directa. Si necesitas portar este código a un motor que no soporte `QUALIFY`, usa la versión con subconsulta del Paso 3.2.
 
-**3.4** Construye la consulta de deduplicación: obtén **solo el registro canónico** de cada `CLIENTE_ID` (el que se conservaría tras una limpieza):
+**Paso 3.4 — Construye la consulta de deduplicación: obtén solo el registro canónico de cada CLIENTE_ID (el que se conservaría tras una limpieza):**
 
 ```sql
--- Dataset deduplicado: un registro por CLIENTE_ID (el más antiguo)
+-- Dataset deduplicado: un registro por ID_CLIENTE.
 SELECT
-    CLIENTE_ID,
+    ID_CLIENTE,
     NOMBRE,
     EMAIL,
-    FECHA_REGISTRO
+    FECHA_REGISTRO,
+    CIUDAD,
+    PAIS,
+    FUENTE_CARGA,
+    FECHA_CARGA
 FROM CLIENTES_DIRTY
 QUALIFY ROW_NUMBER() OVER (
-    PARTITION BY CLIENTE_ID
-    ORDER BY FECHA_REGISTRO ASC
+    PARTITION BY ID_CLIENTE
+    ORDER BY FECHA_REGISTRO ASC, FECHA_CARGA ASC
 ) = 1
-ORDER BY CLIENTE_ID;
+ORDER BY ID_CLIENTE;
 ```
 
-**3.5** Verifica que el resultado deduplicado tiene el número correcto de filas. Debería coincidir aproximadamente con la tabla limpia `CLIENTES`:
+**Paso 3.5 — Verifica que el resultado deduplicado tiene el número correcto de filas. Debería coincidir aproximadamente con la tabla limpia CLIENTES:**
 
 ```sql
--- Comparar conteos: deduplicado vs. tabla limpia
+-- Comparar conteos: deduplicado vs. tabla limpia.
+-- En este dataset, el deduplicado puede tener más registros que CLIENTES
+-- porque CLIENTES_DIRTY incluye clientes adicionales de carga externa.
 SELECT
-    'CLIENTES_DIRTY deduplicada' AS origen,
-    COUNT(*)                     AS total_registros
+    'CLIENTES_DIRTY deduplicada' AS ORIGEN,
+    COUNT(*)                     AS TOTAL_REGISTROS
 FROM (
-    SELECT CLIENTE_ID
+    SELECT ID_CLIENTE
     FROM CLIENTES_DIRTY
     QUALIFY ROW_NUMBER() OVER (
-        PARTITION BY CLIENTE_ID
-        ORDER BY FECHA_REGISTRO ASC
+        PARTITION BY ID_CLIENTE
+        ORDER BY FECHA_REGISTRO ASC, FECHA_CARGA ASC
     ) = 1
 )
 
 UNION ALL
 
 SELECT
-    'CLIENTES (limpia)' AS origen,
-    COUNT(*)            AS total_registros
+    'CLIENTES limpia' AS ORIGEN,
+    COUNT(*)          AS TOTAL_REGISTROS
 FROM CLIENTES;
 ```
 
-**3.6** Aplica el mismo enfoque a `PEDIDOS_DIRTY`, esta vez usando como criterio de conservación el registro con `FECHA_PEDIDO` más reciente en caso de duplicado por `PEDIDO_ID`:
+**Paso 3.6 — Aplica el mismo enfoque a PEDIDOS_DIRTY, esta vez usando como criterio de conservación el registro con FECHA_PEDIDO más reciente en caso de duplicado por PEDIDO_ID:**
 
 ```sql
--- Deduplicación de PEDIDOS_DIRTY: conservar el registro más reciente
+-- Deduplicación de PEDIDOS_DIRTY:
+-- conservar el registro más reciente por FECHA_CARGA en caso de duplicado por ID_PEDIDO.
 SELECT
-    PEDIDO_ID,
-    CLIENTE_ID,
+    ID_PEDIDO,
+    ID_CLIENTE,
     FECHA_PEDIDO,
     MONTO_TOTAL,
-    ESTADO,
+    ESTADO_PEDIDO,
+    CANAL,
+    FUENTE_CARGA,
+    FECHA_CARGA,
     ROW_NUMBER() OVER (
-        PARTITION BY PEDIDO_ID
-        ORDER BY FECHA_PEDIDO DESC
-    ) AS rn
+        PARTITION BY ID_PEDIDO
+        ORDER BY FECHA_CARGA DESC
+    ) AS RN
 FROM PEDIDOS_DIRTY
-QUALIFY rn = 1
-ORDER BY PEDIDO_ID;
+QUALIFY RN = 1
+ORDER BY ID_PEDIDO;
 ```
 
-#### Resultado Esperado
+**Paso 3.7 — Aislar pedidos sobrantes por `ID_PEDIDO`**
 
-- El paso 3.1 muestra todas las filas con su número de fila dentro del grupo. Los clientes sin duplicados tienen solo `rn = 1`; los duplicados tienen `rn = 2`, `rn = 3`, etc.
-- Los pasos 3.2 y 3.3 deben devolver **exactamente el mismo número de filas** (verificación de equivalencia entre subconsulta y `QUALIFY`)
-- El paso 3.5 debe mostrar conteos iguales o muy cercanos entre la tabla deduplicada y la tabla limpia
-- El paso 3.6 produce un dataset de pedidos sin duplicados de `PEDIDO_ID`
+```sql
+-- Pedidos duplicados que no conservaríamos según el criterio anterior.
+SELECT
+    ID_PEDIDO,
+    ID_CLIENTE,
+    FECHA_PEDIDO,
+    MONTO_TOTAL,
+    ESTADO_PEDIDO,
+    CANAL,
+    FUENTE_CARGA,
+    FECHA_CARGA,
+    ROW_NUMBER() OVER (
+        PARTITION BY ID_PEDIDO
+        ORDER BY FECHA_CARGA DESC
+    ) AS RN
+FROM PEDIDOS_DIRTY
+QUALIFY RN > 1
+ORDER BY ID_PEDIDO, RN;
+```
+
+#### Resultado esperado
+
+- El paso 3.1 muestra todas las filas con su número dentro del grupo.
+- Los clientes sin duplicados tienen solo `RN = 1`.
+- Los clientes duplicados tienen `RN = 2`, `RN = 3`, etc.
+- Los pasos 3.2 y 3.3 deben devolver exactamente el mismo número de filas.
+- El paso 3.4 devuelve exactamente una fila por cada `ID_CLIENTE` único.
+- El paso 3.6 produce un dataset de pedidos sin duplicados por `ID_PEDIDO`.
 
 #### Verificación
 
-Confirma los siguientes puntos antes de continuar:
+```sql
+-- Verificar equivalencia entre subconsulta y QUALIFY para duplicados de clientes.
+SELECT 'Subconsulta' AS METODO, COUNT(*) AS FILAS
+FROM (
+    SELECT
+        ID_CLIENTE,
+        ROW_NUMBER() OVER (
+            PARTITION BY ID_CLIENTE
+            ORDER BY FECHA_REGISTRO ASC, FECHA_CARGA ASC
+        ) AS RN
+    FROM CLIENTES_DIRTY
+) T
+WHERE RN > 1
 
-- [ ] El resultado del paso 3.2 y del paso 3.3 tienen el mismo número de filas
-- [ ] La consulta del paso 3.4 devuelve exactamente 1 fila por cada `CLIENTE_ID` único
-- [ ] El conteo del paso 3.5 muestra valores iguales o con diferencia explicable (clientes en la tabla dirty que no están en la limpia, o viceversa)
+UNION ALL
+
+SELECT 'QUALIFY' AS METODO, COUNT(*) AS FILAS
+FROM (
+    SELECT *
+    FROM CLIENTES_DIRTY
+    QUALIFY ROW_NUMBER() OVER (
+        PARTITION BY ID_CLIENTE
+        ORDER BY FECHA_REGISTRO ASC, FECHA_CARGA ASC
+    ) > 1
+);
+```
+
+Los dos conteos deben ser idénticos.
 
 ---
 
-### Paso 4: Validación de Integridad Referencial
+### Ejercicio 4 — Validación de integridad referencial
 
 **Objetivo:** Detectar registros huérfanos usando `LEFT JOIN` con filtro `WHERE IS NULL`, identificando pedidos sin cliente válido y clientes sin ningún pedido asociado.
 
 #### Instrucciones
 
-**4.1** Encuentra pedidos en `PEDIDOS_DIRTY` cuyo `CLIENTE_ID` no existe en `CLIENTES_DIRTY` (pedidos huérfanos — referencias rotas):
+**Paso 4.1 — Encuentra pedidos en PEDIDOS_DIRTY cuyo CLIENTE_ID no existe en CLIENTES_DIRTY (pedidos huérfanos — referencias rotas):**
 
 ```sql
--- Pedidos con CLIENTE_ID que no existe en CLIENTES_DIRTY
+-- Pedidos con ID_CLIENTE que no existe en CLIENTES_DIRTY.
+-- Estos pedidos tienen una referencia rota.
 SELECT
-    p.PEDIDO_ID,
-    p.CLIENTE_ID        AS cliente_id_en_pedido,
-    p.FECHA_PEDIDO,
-    p.MONTO_TOTAL,
-    c.CLIENTE_ID        AS cliente_id_en_clientes
-FROM PEDIDOS_DIRTY p
-LEFT JOIN CLIENTES_DIRTY c ON p.CLIENTE_ID = c.CLIENTE_ID
-WHERE c.CLIENTE_ID IS NULL
-ORDER BY p.PEDIDO_ID;
+    P.ID_PEDIDO,
+    P.ID_CLIENTE        AS ID_CLIENTE_EN_PEDIDO,
+    P.FECHA_PEDIDO,
+    P.MONTO_TOTAL,
+    P.ESTADO_PEDIDO,
+    C.ID_CLIENTE        AS ID_CLIENTE_EN_CLIENTES
+FROM PEDIDOS_DIRTY P
+LEFT JOIN CLIENTES_DIRTY C
+    ON P.ID_CLIENTE = C.ID_CLIENTE
+WHERE C.ID_CLIENTE IS NULL
+  AND P.ID_CLIENTE IS NOT NULL
+ORDER BY P.ID_PEDIDO;
 ```
 
-> 💡 **¿Por qué funciona este patrón?** El `LEFT JOIN` mantiene **todas** las filas de `PEDIDOS_DIRTY`, independientemente de si tienen coincidencia en `CLIENTES_DIRTY`. Cuando no hay coincidencia, las columnas de `CLIENTES_DIRTY` aparecen como `NULL`. Filtrar por `WHERE c.CLIENTE_ID IS NULL` selecciona precisamente esos pedidos sin cliente válido.
+> 💡 **¿Por qué funciona este patrón?** El `LEFT JOIN` mantiene **todas** las filas de `PEDIDOS_DIRTY`, independientemente de si tienen coincidencia en `CLIENTES_DIRTY`. Cuando no hay coincidencia, las columnas de `CLIENTES_DIRTY` aparecen como `NULL`. Filtrar por `WHERE C.ID_CLIENTE IS NULL` selecciona precisamente esos pedidos sin cliente válido.
 
-**4.2** Distingue entre pedidos huérfanos por referencia rota vs. pedidos con `CLIENTE_ID` nulo (son problemas diferentes):
+**Paso 4.2 — Distingue entre pedidos huérfanos por referencia rota vs. pedidos con CLIENTE_ID nulo (son problemas diferentes):**
 
 ```sql
--- Categorizar los pedidos problemáticos
+-- Categorizar los pedidos problemáticos.
+-- Un ID_CLIENTE nulo y un ID_CLIENTE inexistente son problemas diferentes.
 SELECT
     CASE
-        WHEN p.CLIENTE_ID IS NULL          THEN 'CLIENTE_ID nulo en pedido'
-        WHEN c.CLIENTE_ID IS NULL          THEN 'CLIENTE_ID no existe en clientes'
+        WHEN P.ID_CLIENTE IS NULL          THEN 'ID_CLIENTE nulo en pedido'
+        WHEN C.ID_CLIENTE IS NULL          THEN 'ID_CLIENTE no existe en clientes'
         ELSE                                    'Referencia válida'
-    END                                    AS tipo_problema,
-    COUNT(*)                               AS cantidad
-FROM PEDIDOS_DIRTY p
-LEFT JOIN CLIENTES_DIRTY c ON p.CLIENTE_ID = c.CLIENTE_ID
-GROUP BY tipo_problema
-ORDER BY cantidad DESC;
+    END                                    AS TIPO_PROBLEMA,
+    COUNT(*)                               AS CANTIDAD
+FROM PEDIDOS_DIRTY P
+LEFT JOIN CLIENTES_DIRTY C
+    ON P.ID_CLIENTE = C.ID_CLIENTE
+GROUP BY TIPO_PROBLEMA
+ORDER BY CANTIDAD DESC;
 ```
 
-**4.3** Encuentra clientes en `CLIENTES_DIRTY` que no tienen ningún pedido en `PEDIDOS_DIRTY` (clientes sin actividad — posibles registros fantasma o clientes nuevos sin compras):
+**Paso 4.3 — Encuentra clientes en CLIENTES_DIRTY que no tienen ningún pedido en PEDIDOS_DIRTY (clientes sin actividad — posibles registros fantasma o clientes nuevos sin compras):**
 
 ```sql
--- Clientes sin ningún pedido asociado
+-- Clientes sin ningún pedido asociado.
+-- Pueden ser clientes nuevos, registros fantasma o cargas incompletas.
 SELECT
-    c.CLIENTE_ID,
-    c.NOMBRE,
-    c.EMAIL,
-    c.FECHA_REGISTRO,
-    p.PEDIDO_ID         AS pedido_id_encontrado
-FROM CLIENTES_DIRTY c
-LEFT JOIN PEDIDOS_DIRTY p ON c.CLIENTE_ID = p.CLIENTE_ID
-WHERE p.PEDIDO_ID IS NULL
-ORDER BY c.FECHA_REGISTRO DESC;
+    C.ID_CLIENTE,
+    C.NOMBRE,
+    C.EMAIL,
+    C.FECHA_REGISTRO,
+    C.FUENTE_CARGA,
+    P.ID_PEDIDO         AS ID_PEDIDO_ENCONTRADO
+FROM CLIENTES_DIRTY C
+LEFT JOIN PEDIDOS_DIRTY P
+    ON C.ID_CLIENTE = P.ID_CLIENTE
+WHERE P.ID_PEDIDO IS NULL
+ORDER BY C.FECHA_REGISTRO DESC;
 ```
 
-**4.4** Valida contra las tablas limpias: ¿los pedidos huérfanos de `PEDIDOS_DIRTY` también son huérfanos en la tabla limpia `PEDIDOS`?
+**Paso 4.4 — Valida contra las tablas limpias: ¿los pedidos huérfanos de PEDIDOS_DIRTY también son huérfanos en la tabla limpia PEDIDOS?**
 
 ```sql
--- ¿Los pedidos huérfanos en DIRTY también son problemáticos en la tabla limpia?
+-- ¿Los pedidos huérfanos en DIRTY también existen en la tabla limpia?
+-- Esto ayuda a distinguir errores de carga externa vs. registros reales del sistema.
 SELECT
-    p_dirty.PEDIDO_ID,
-    p_dirty.CLIENTE_ID,
+    P_DIRTY.ID_PEDIDO,
+    P_DIRTY.ID_CLIENTE,
     CASE
-        WHEN p_limpia.PEDIDO_ID IS NOT NULL THEN 'Existe en tabla limpia'
-        ELSE                                     'No existe en tabla limpia'
-    END AS estado_en_limpia
+        WHEN P_LIMPIA.ID_PEDIDO IS NOT NULL THEN 'Existe en tabla limpia'
+        ELSE                                      'No existe en tabla limpia'
+    END AS ESTADO_EN_LIMPIA
 FROM (
-    -- Subconsulta: pedidos huérfanos en DIRTY
-    SELECT p.PEDIDO_ID, p.CLIENTE_ID
-    FROM PEDIDOS_DIRTY p
-    LEFT JOIN CLIENTES_DIRTY c ON p.CLIENTE_ID = c.CLIENTE_ID
-    WHERE c.CLIENTE_ID IS NULL
-      AND p.CLIENTE_ID IS NOT NULL
-) p_dirty
-LEFT JOIN PEDIDOS p_limpia ON p_dirty.PEDIDO_ID = p_limpia.PEDIDO_ID
-ORDER BY p_dirty.PEDIDO_ID;
+    SELECT P.ID_PEDIDO, P.ID_CLIENTE
+    FROM PEDIDOS_DIRTY P
+    LEFT JOIN CLIENTES_DIRTY C
+        ON P.ID_CLIENTE = C.ID_CLIENTE
+    WHERE C.ID_CLIENTE IS NULL
+      AND P.ID_CLIENTE IS NOT NULL
+) P_DIRTY
+LEFT JOIN PEDIDOS P_LIMPIA
+    ON P_DIRTY.ID_PEDIDO = P_LIMPIA.ID_PEDIDO
+ORDER BY P_DIRTY.ID_PEDIDO;
 ```
 
-**4.5** Obtén un resumen cuantitativo de los problemas de integridad referencial encontrados:
+**Paso 4.5 — Obtén un resumen cuantitativo de los problemas de integridad referencial encontrados:**
 
 ```sql
--- Resumen de integridad referencial
-SELECT 'Pedidos con CLIENTE_ID nulo'                     AS problema,
-       COUNT(*)                                           AS cantidad
+-- Resumen de integridad referencial.
+SELECT
+    'Pedidos con ID_CLIENTE nulo' AS PROBLEMA,
+    COUNT(*) AS CANTIDAD
 FROM PEDIDOS_DIRTY
-WHERE CLIENTE_ID IS NULL
+WHERE ID_CLIENTE IS NULL
 
 UNION ALL
 
-SELECT 'Pedidos con referencia a cliente inexistente'     AS problema,
-       COUNT(*)                                           AS cantidad
-FROM PEDIDOS_DIRTY p
-LEFT JOIN CLIENTES_DIRTY c ON p.CLIENTE_ID = c.CLIENTE_ID
-WHERE c.CLIENTE_ID IS NULL
-  AND p.CLIENTE_ID IS NOT NULL
+SELECT
+    'Pedidos con referencia a cliente inexistente' AS PROBLEMA,
+    COUNT(*) AS CANTIDAD
+FROM PEDIDOS_DIRTY P
+LEFT JOIN CLIENTES_DIRTY C
+    ON P.ID_CLIENTE = C.ID_CLIENTE
+WHERE C.ID_CLIENTE IS NULL
+  AND P.ID_CLIENTE IS NOT NULL
 
 UNION ALL
 
-SELECT 'Clientes sin ningún pedido'                       AS problema,
-       COUNT(*)                                           AS cantidad
-FROM CLIENTES_DIRTY c
-LEFT JOIN PEDIDOS_DIRTY p ON c.CLIENTE_ID = p.CLIENTE_ID
-WHERE p.PEDIDO_ID IS NULL;
+SELECT
+    'Clientes sin ningún pedido' AS PROBLEMA,
+    COUNT(*) AS CANTIDAD
+FROM CLIENTES_DIRTY C
+LEFT JOIN PEDIDOS_DIRTY P
+    ON C.ID_CLIENTE = P.ID_CLIENTE
+WHERE P.ID_PEDIDO IS NULL;
 ```
 
-#### Resultado Esperado
+#### Resultado esperado
 
-- El paso 4.1 devuelve los pedidos cuyos `CLIENTE_ID` no existen en `CLIENTES_DIRTY`
-- El paso 4.2 categoriza claramente cuántos problemas son de tipo "nulo" vs. "referencia rota" — son causas distintas que requieren soluciones distintas
-- El paso 4.3 puede devolver clientes legítimos nuevos sin compras, o bien registros duplicados que quedaron sin pedidos asociados
-- El paso 4.5 produce una tabla resumen de 3 filas con los conteos de cada tipo de problema
+- El paso 4.1 devuelve los pedidos cuyos `ID_CLIENTE` no existen en `CLIENTES_DIRTY`.
+- El paso 4.2 categoriza claramente cuántos problemas son de tipo nulo y cuántos son referencias rotas.
+- El paso 4.3 devuelve clientes sin pedidos asociados.
+- El paso 4.5 produce una tabla resumen de 3 filas con los conteos de cada tipo de problema.
 
 #### Verificación
 
-- [ ] El paso 4.1 devuelve al menos 1 pedido huérfano (confirma que los datos dirty tienen el problema esperado)
-- [ ] El paso 4.2 distingue correctamente entre nulos y referencias rotas (categorías mutuamente excluyentes)
-- [ ] Los conteos del paso 4.5 son consistentes con los diagnósticos del Paso 1
+```sql
+-- Preguntas de análisis — responde en comentarios:
+-- 1. ¿Cuántos pedidos tienen ID_CLIENTE nulo?
+-- 2. ¿Cuántos pedidos referencian clientes inexistentes?
+-- 3. ¿Por qué esos dos problemas no deben tratarse igual?
+-- 4. ¿Cuántos clientes no tienen ningún pedido?
+```
 
 ---
 
-### Paso 5: Construcción del Reporte de Calidad de Datos
+### Ejercicio 5 — Construcción del reporte de calidad de datos
 
 **Objetivo:** Consolidar todos los hallazgos de los pasos anteriores en un único reporte de calidad de datos que pueda presentarse a stakeholders técnicos y de negocio.
 
 #### Instrucciones
 
-**5.1** Construye el reporte consolidado usando `UNION ALL` para agregar todas las dimensiones de calidad analizadas:
+**Paso 5.1 — Construye el reporte consolidado usando UNION ALL para agregar todas las dimensiones de calidad analizadas:**
 
 ```sql
 -- ============================================================
 -- REPORTE DE CALIDAD DE DATOS - TABLAS DIRTY
--- Consolida: duplicados, nulos críticos e integridad referencial
+-- Consolida:
+-- 1) Duplicados por ID_CLIENTE.
+-- 2) Duplicados por ID_PEDIDO.
+-- 3) Nulos críticos en EMAIL.
+-- 4) Nulos críticos en ID_CLIENTE de pedidos.
+-- 5) Referencias a clientes inexistentes.
 -- ============================================================
 
--- DIMENSIÓN 1: Duplicados en CLIENTES_DIRTY
 SELECT
-    'CLIENTES_DIRTY'                                    AS tabla,
-    'Duplicados por CLIENTE_ID'                         AS dimension_calidad,
-    COUNT(DISTINCT CLIENTE_ID)                          AS claves_afectadas,
-    SUM(cnt - 1)                                        AS registros_sobrantes
+    'CLIENTES_DIRTY'                                    AS TABLA,
+    'Duplicados por ID_CLIENTE'                         AS DIMENSION_CALIDAD,
+    COUNT(DISTINCT ID_CLIENTE)                          AS CLAVES_AFECTADAS,
+    SUM(CNT - 1)                                        AS REGISTROS_SOBRANTES
 FROM (
-    SELECT CLIENTE_ID, COUNT(*) AS cnt
+    SELECT ID_CLIENTE, COUNT(*) AS CNT
     FROM CLIENTES_DIRTY
-    GROUP BY CLIENTE_ID
+    GROUP BY ID_CLIENTE
     HAVING COUNT(*) > 1
-) dup_clientes
+) DUP_CLIENTES
 
 UNION ALL
 
--- DIMENSIÓN 2: Duplicados en PEDIDOS_DIRTY
 SELECT
-    'PEDIDOS_DIRTY'                                     AS tabla,
-    'Duplicados por PEDIDO_ID'                          AS dimension_calidad,
-    COUNT(DISTINCT PEDIDO_ID)                           AS claves_afectadas,
-    SUM(cnt - 1)                                        AS registros_sobrantes
+    'PEDIDOS_DIRTY'                                     AS TABLA,
+    'Duplicados por ID_PEDIDO'                          AS DIMENSION_CALIDAD,
+    COUNT(DISTINCT ID_PEDIDO)                           AS CLAVES_AFECTADAS,
+    SUM(CNT - 1)                                        AS REGISTROS_SOBRANTES
 FROM (
-    SELECT PEDIDO_ID, COUNT(*) AS cnt
+    SELECT ID_PEDIDO, COUNT(*) AS CNT
     FROM PEDIDOS_DIRTY
-    GROUP BY PEDIDO_ID
+    GROUP BY ID_PEDIDO
     HAVING COUNT(*) > 1
-) dup_pedidos
+) DUP_PEDIDOS
 
 UNION ALL
 
--- DIMENSIÓN 3: Nulos en EMAIL de CLIENTES_DIRTY
 SELECT
-    'CLIENTES_DIRTY'                                    AS tabla,
-    'Nulos en columna EMAIL'                            AS dimension_calidad,
-    COUNT(*) - COUNT(EMAIL)                             AS claves_afectadas,
-    COUNT(*) - COUNT(EMAIL)                             AS registros_sobrantes
+    'CLIENTES_DIRTY'                                    AS TABLA,
+    'Nulos en columna EMAIL'                            AS DIMENSION_CALIDAD,
+    COUNT(*) - COUNT(EMAIL)                             AS CLAVES_AFECTADAS,
+    COUNT(*) - COUNT(EMAIL)                             AS REGISTROS_SOBRANTES
 FROM CLIENTES_DIRTY
 
 UNION ALL
 
--- DIMENSIÓN 4: Nulos en CLIENTE_ID de PEDIDOS_DIRTY
 SELECT
-    'PEDIDOS_DIRTY'                                     AS tabla,
-    'Nulos en columna CLIENTE_ID'                       AS dimension_calidad,
-    COUNT(*) - COUNT(CLIENTE_ID)                        AS claves_afectadas,
-    COUNT(*) - COUNT(CLIENTE_ID)                        AS registros_sobrantes
+    'PEDIDOS_DIRTY'                                     AS TABLA,
+    'Nulos en columna ID_CLIENTE'                       AS DIMENSION_CALIDAD,
+    COUNT(*) - COUNT(ID_CLIENTE)                        AS CLAVES_AFECTADAS,
+    COUNT(*) - COUNT(ID_CLIENTE)                        AS REGISTROS_SOBRANTES
 FROM PEDIDOS_DIRTY
 
 UNION ALL
 
--- DIMENSIÓN 5: Pedidos con referencia a cliente inexistente
 SELECT
-    'PEDIDOS_DIRTY'                                     AS tabla,
-    'Referencia a CLIENTE_ID inexistente'               AS dimension_calidad,
-    COUNT(*)                                            AS claves_afectadas,
-    COUNT(*)                                            AS registros_sobrantes
-FROM PEDIDOS_DIRTY p
-LEFT JOIN CLIENTES_DIRTY c ON p.CLIENTE_ID = c.CLIENTE_ID
-WHERE c.CLIENTE_ID IS NULL
-  AND p.CLIENTE_ID IS NOT NULL
+    'PEDIDOS_DIRTY'                                     AS TABLA,
+    'Referencia a ID_CLIENTE inexistente'               AS DIMENSION_CALIDAD,
+    COUNT(*)                                            AS CLAVES_AFECTADAS,
+    COUNT(*)                                            AS REGISTROS_SOBRANTES
+FROM PEDIDOS_DIRTY P
+LEFT JOIN CLIENTES_DIRTY C
+    ON P.ID_CLIENTE = C.ID_CLIENTE
+WHERE C.ID_CLIENTE IS NULL
+  AND P.ID_CLIENTE IS NOT NULL
 
-ORDER BY tabla, dimension_calidad;
+ORDER BY TABLA, DIMENSION_CALIDAD;
 ```
 
-**5.2** Agrega una columna de severidad y porcentaje de impacto al reporte:
+**Paso 5.2 — Agrega una columna de severidad y porcentaje de impacto al reporte:**
 
 ```sql
--- Reporte de calidad con severidad y porcentaje de impacto
-WITH totales AS (
+-- Reporte de calidad con severidad y porcentaje de impacto.
+WITH TOTALES AS (
     SELECT
-        (SELECT COUNT(*) FROM CLIENTES_DIRTY) AS total_clientes,
-        (SELECT COUNT(*) FROM PEDIDOS_DIRTY)  AS total_pedidos
+        (SELECT COUNT(*) FROM CLIENTES_DIRTY) AS TOTAL_CLIENTES,
+        (SELECT COUNT(*) FROM PEDIDOS_DIRTY)  AS TOTAL_PEDIDOS
 ),
 
-hallazgos AS (
-    -- Duplicados CLIENTES
-    SELECT 'CLIENTES_DIRTY' AS tabla, 'Duplicados por CLIENTE_ID' AS problema,
-           SUM(cnt - 1) AS registros_afectados
-    FROM (SELECT CLIENTE_ID, COUNT(*) AS cnt FROM CLIENTES_DIRTY
-          GROUP BY CLIENTE_ID HAVING COUNT(*) > 1) d
+HALLAZGOS AS (
+    SELECT
+        'CLIENTES_DIRTY' AS TABLA,
+        'Duplicados por ID_CLIENTE' AS PROBLEMA,
+        COALESCE(SUM(CNT - 1), 0) AS REGISTROS_AFECTADOS
+    FROM (
+        SELECT ID_CLIENTE, COUNT(*) AS CNT
+        FROM CLIENTES_DIRTY
+        GROUP BY ID_CLIENTE
+        HAVING COUNT(*) > 1
+    ) D
 
     UNION ALL
 
-    -- Duplicados PEDIDOS
-    SELECT 'PEDIDOS_DIRTY', 'Duplicados por PEDIDO_ID',
-           SUM(cnt - 1)
-    FROM (SELECT PEDIDO_ID, COUNT(*) AS cnt FROM PEDIDOS_DIRTY
-          GROUP BY PEDIDO_ID HAVING COUNT(*) > 1) d
+    SELECT
+        'PEDIDOS_DIRTY',
+        'Duplicados por ID_PEDIDO',
+        COALESCE(SUM(CNT - 1), 0)
+    FROM (
+        SELECT ID_PEDIDO, COUNT(*) AS CNT
+        FROM PEDIDOS_DIRTY
+        GROUP BY ID_PEDIDO
+        HAVING COUNT(*) > 1
+    ) D
 
     UNION ALL
 
-    -- Nulos EMAIL en CLIENTES
-    SELECT 'CLIENTES_DIRTY', 'Nulos en EMAIL',
-           COUNT(*) - COUNT(EMAIL)
+    SELECT
+        'CLIENTES_DIRTY',
+        'Nulos en EMAIL',
+        COUNT(*) - COUNT(EMAIL)
     FROM CLIENTES_DIRTY
 
     UNION ALL
 
-    -- Nulos CLIENTE_ID en PEDIDOS
-    SELECT 'PEDIDOS_DIRTY', 'Nulos en CLIENTE_ID',
-           COUNT(*) - COUNT(CLIENTE_ID)
+    SELECT
+        'PEDIDOS_DIRTY',
+        'Nulos en ID_CLIENTE',
+        COUNT(*) - COUNT(ID_CLIENTE)
     FROM PEDIDOS_DIRTY
 
     UNION ALL
 
-    -- Referencias rotas en PEDIDOS
-    SELECT 'PEDIDOS_DIRTY', 'Referencia a CLIENTE_ID inexistente',
-           COUNT(*)
-    FROM PEDIDOS_DIRTY p
-    LEFT JOIN CLIENTES_DIRTY c ON p.CLIENTE_ID = c.CLIENTE_ID
-    WHERE c.CLIENTE_ID IS NULL AND p.CLIENTE_ID IS NOT NULL
+    SELECT
+        'PEDIDOS_DIRTY',
+        'Referencia a ID_CLIENTE inexistente',
+        COUNT(*)
+    FROM PEDIDOS_DIRTY P
+    LEFT JOIN CLIENTES_DIRTY C
+        ON P.ID_CLIENTE = C.ID_CLIENTE
+    WHERE C.ID_CLIENTE IS NULL
+      AND P.ID_CLIENTE IS NOT NULL
 )
 
 SELECT
-    h.tabla,
-    h.problema,
-    h.registros_afectados,
-    CASE h.tabla
-        WHEN 'CLIENTES_DIRTY' THEN t.total_clientes
-        ELSE t.total_pedidos
-    END                                                         AS total_tabla,
+    H.TABLA,
+    H.PROBLEMA,
+    H.REGISTROS_AFECTADOS,
+    CASE H.TABLA
+        WHEN 'CLIENTES_DIRTY' THEN T.TOTAL_CLIENTES
+        ELSE T.TOTAL_PEDIDOS
+    END AS TOTAL_TABLA,
     ROUND(
-        h.registros_afectados * 100.0 /
-        CASE h.tabla
-            WHEN 'CLIENTES_DIRTY' THEN t.total_clientes
-            ELSE t.total_pedidos
+        H.REGISTROS_AFECTADOS * 100.0 /
+        CASE H.TABLA
+            WHEN 'CLIENTES_DIRTY' THEN T.TOTAL_CLIENTES
+            ELSE T.TOTAL_PEDIDOS
         END, 2
-    )                                                           AS pct_impacto,
+    ) AS PCT_IMPACTO,
     CASE
-        WHEN h.registros_afectados * 100.0 /
-             CASE h.tabla WHEN 'CLIENTES_DIRTY'
-                 THEN t.total_clientes ELSE t.total_pedidos END > 10
-            THEN '🔴 CRÍTICO'
-        WHEN h.registros_afectados * 100.0 /
-             CASE h.tabla WHEN 'CLIENTES_DIRTY'
-                 THEN t.total_clientes ELSE t.total_pedidos END > 3
-            THEN '🟡 MODERADO'
-        ELSE '🟢 BAJO'
-    END                                                         AS severidad
-FROM hallazgos h
-CROSS JOIN totales t
-ORDER BY pct_impacto DESC;
+        WHEN H.REGISTROS_AFECTADOS * 100.0 /
+             CASE H.TABLA
+                 WHEN 'CLIENTES_DIRTY' THEN T.TOTAL_CLIENTES
+                 ELSE T.TOTAL_PEDIDOS
+             END > 10
+            THEN 'CRÍTICO'
+        WHEN H.REGISTROS_AFECTADOS * 100.0 /
+             CASE H.TABLA
+                 WHEN 'CLIENTES_DIRTY' THEN T.TOTAL_CLIENTES
+                 ELSE T.TOTAL_PEDIDOS
+             END > 3
+            THEN 'MODERADO'
+        ELSE 'BAJO'
+    END AS SEVERIDAD
+FROM HALLAZGOS H
+CROSS JOIN TOTALES T
+ORDER BY PCT_IMPACTO DESC;
 ```
 
-#### Resultado Esperado
+#### Resultado esperado
 
 El reporte final debe mostrar una tabla con las siguientes columnas:
 
-| tabla | problema | registros_afectados | total_tabla | pct_impacto | severidad |
-|---|---|---|---|---|---|
-| PEDIDOS_DIRTY | Duplicados por PEDIDO_ID | _N_ | _N_ | _N%_ | 🔴/🟡/🟢 |
-| CLIENTES_DIRTY | Duplicados por CLIENTE_ID | _N_ | _N_ | _N%_ | 🔴/🟡/🟢 |
-| PEDIDOS_DIRTY | Nulos en CLIENTE_ID | _N_ | _N_ | _N%_ | 🔴/🟡/🟢 |
-| ... | ... | ... | ... | ... | ... |
+| TABLA | PROBLEMA | REGISTROS_AFECTADOS | TOTAL_TABLA | PCT_IMPACTO | SEVERIDAD |
+|---|---|---:|---:|---:|---|
+| `PEDIDOS_DIRTY` | Duplicados por `ID_PEDIDO` | N | N | N% | CRÍTICO/MODERADO/BAJO |
+| `CLIENTES_DIRTY` | Duplicados por `ID_CLIENTE` | N | N | N% | CRÍTICO/MODERADO/BAJO |
+| `PEDIDOS_DIRTY` | Nulos en `ID_CLIENTE` | N | N | N% | CRÍTICO/MODERADO/BAJO |
 
-Los valores exactos dependerán de los datos generados por el script de setup. Lo importante es que:
-- Todos los problemas conocidos aparecen en el reporte
-- Los porcentajes son coherentes con los conteos individuales de pasos anteriores
-- La columna de severidad clasifica correctamente según los umbrales definidos
+Lo importante es que todos los problemas conocidos aparecen en el reporte y los porcentajes son coherentes con los conteos individuales de pasos anteriores.
 
 #### Verificación
 
-- [ ] El reporte muestra exactamente 5 filas (una por cada dimensión de calidad analizada)
-- [ ] La suma de `registros_afectados` de las dimensiones de duplicados coincide con los valores calculados en el Paso 2
-- [ ] Los porcentajes son coherentes: `registros_afectados / total_tabla * 100`
+```sql
+-- Verificar que el reporte muestra exactamente 5 dimensiones de calidad.
+WITH HALLAZGOS AS (
+    SELECT 'CLIENTES_DIRTY' AS TABLA, 'Duplicados por ID_CLIENTE' AS PROBLEMA
+    UNION ALL SELECT 'PEDIDOS_DIRTY', 'Duplicados por ID_PEDIDO'
+    UNION ALL SELECT 'CLIENTES_DIRTY', 'Nulos en EMAIL'
+    UNION ALL SELECT 'PEDIDOS_DIRTY', 'Nulos en ID_CLIENTE'
+    UNION ALL SELECT 'PEDIDOS_DIRTY', 'Referencia a ID_CLIENTE inexistente'
+)
+SELECT COUNT(*) AS TOTAL_DIMENSIONES
+FROM HALLAZGOS;
+-- Resultado esperado: 5
+```
 
 ---
 
 ## Validación y Pruebas Finales
 
-Una vez completados todos los pasos, ejecuta las siguientes consultas de validación para confirmar que tus resultados son consistentes:
-
-### Prueba de Consistencia 1: Verificar la Equivalencia entre Subconsulta y QUALIFY
+### Validación 1 — Equivalencia entre subconsulta y `QUALIFY`
 
 ```sql
--- Ambas consultas deben devolver el mismo número de filas
--- Método 1: Subconsulta
-SELECT COUNT(*) AS metodo_subconsulta
+-- Ambas consultas deben devolver el mismo número de filas.
+
+SELECT COUNT(*) AS METODO_SUBCONSULTA
 FROM (
     SELECT
-        CLIENTE_ID,
-        ROW_NUMBER() OVER (PARTITION BY CLIENTE_ID ORDER BY FECHA_REGISTRO ASC) AS rn
+        ID_CLIENTE,
+        ROW_NUMBER() OVER (
+            PARTITION BY ID_CLIENTE
+            ORDER BY FECHA_REGISTRO ASC, FECHA_CARGA ASC
+        ) AS RN
     FROM CLIENTES_DIRTY
-) t
-WHERE rn > 1;
+) T
+WHERE RN > 1;
 
--- Método 2: QUALIFY
-SELECT COUNT(*) AS metodo_qualify
-FROM CLIENTES_DIRTY
-WHERE 1=1
-QUALIFY ROW_NUMBER() OVER (PARTITION BY CLIENTE_ID ORDER BY FECHA_REGISTRO ASC) > 1;
+SELECT COUNT(*) AS METODO_QUALIFY
+FROM (
+    SELECT *
+    FROM CLIENTES_DIRTY
+    QUALIFY ROW_NUMBER() OVER (
+        PARTITION BY ID_CLIENTE
+        ORDER BY FECHA_REGISTRO ASC, FECHA_CARGA ASC
+    ) > 1
+);
 ```
 
-**Resultado esperado:** Ambos conteos deben ser **idénticos**.
+**Resultado esperado:** ambos conteos deben ser idénticos.
 
-### Prueba de Consistencia 2: Verificar que la Deduplicación no Pierde Clientes Únicos
+---
+
+### Validación 2 — Verificar que la deduplicación no pierde clientes únicos
 
 ```sql
--- Los clientes que NO tienen duplicados deben aparecer en ambos datasets
-SELECT COUNT(*) AS clientes_sin_duplicados_original
+-- Clientes que no tienen duplicados por ID_CLIENTE.
+SELECT COUNT(*) AS CLIENTES_SIN_DUPLICADOS_ORIGINAL
 FROM CLIENTES_DIRTY
-WHERE CLIENTE_ID NOT IN (
-    SELECT CLIENTE_ID
+WHERE ID_CLIENTE NOT IN (
+    SELECT ID_CLIENTE
     FROM CLIENTES_DIRTY
-    GROUP BY CLIENTE_ID
+    GROUP BY ID_CLIENTE
     HAVING COUNT(*) > 1
 );
 
--- El mismo conteo debe aparecer en el dataset deduplicado
--- (porque esos registros tienen rn = 1 por defecto)
+-- Total de clientes después de deduplicar por ID_CLIENTE.
+SELECT COUNT(*) AS CLIENTES_DEDUPLICADOS
+FROM (
+    SELECT ID_CLIENTE
+    FROM CLIENTES_DIRTY
+    QUALIFY ROW_NUMBER() OVER (
+        PARTITION BY ID_CLIENTE
+        ORDER BY FECHA_REGISTRO ASC, FECHA_CARGA ASC
+    ) = 1
+);
 ```
 
-### Prueba de Consistencia 3: Validar el Reporte Final
+**Resultado esperado:** el segundo conteo debe ser mayor o igual que el primero, porque conserva todos los clientes únicos y uno por cada grupo duplicado.
+
+---
+
+### Validación 3 — Validar duplicados contra el reporte final
 
 ```sql
--- La suma de registros_afectados de duplicados debe coincidir
--- con los cálculos individuales del Paso 2
 SELECT
-    'Duplicados CLIENTES (Paso 2.3)' AS origen,
-    SUM(veces_registrado - 1)        AS total
+    'Duplicados CLIENTES por ID_CLIENTE' AS ORIGEN,
+    SUM(VECES_REGISTRADO - 1)            AS TOTAL
 FROM (
-    SELECT CLIENTE_ID, COUNT(*) AS veces_registrado
+    SELECT ID_CLIENTE, COUNT(*) AS VECES_REGISTRADO
     FROM CLIENTES_DIRTY
-    GROUP BY CLIENTE_ID
+    GROUP BY ID_CLIENTE
     HAVING COUNT(*) > 1
 )
 
 UNION ALL
 
 SELECT
-    'Duplicados PEDIDOS (Paso 2.4)' AS origen,
-    SUM(veces_registrado - 1)       AS total
+    'Duplicados PEDIDOS por ID_PEDIDO' AS ORIGEN,
+    SUM(VECES_REGISTRADO - 1)          AS TOTAL
 FROM (
-    SELECT PEDIDO_ID, COUNT(*) AS veces_registrado
+    SELECT ID_PEDIDO, COUNT(*) AS VECES_REGISTRADO
     FROM PEDIDOS_DIRTY
-    GROUP BY PEDIDO_ID
+    GROUP BY ID_PEDIDO
     HAVING COUNT(*) > 1
 );
 ```
 
-**Resultado esperado:** Los valores deben coincidir exactamente con los obtenidos en el Paso 2 y con los del reporte del Paso 5.
+**Resultado esperado:** los valores deben coincidir exactamente con los obtenidos en el Ejercicio 2 y con el reporte del Ejercicio 5.
 
 ---
 
-## Resolución de Problemas
+## Resultados esperados clave con el dataset cargado
 
-### Problema 1: Error "Object does not exist" al consultar CLIENTES_DIRTY o PEDIDOS_DIRTY
+| Consulta / Validación | Resultado esperado |
+|---|---:|
+| Conteo de `CLIENTES` | 12 filas |
+| Conteo de `PEDIDOS` | 22 filas |
+| Conteo de `CLIENTES_DIRTY` | 19 filas |
+| Conteo de `PEDIDOS_DIRTY` | 30 filas |
+| IDs de cliente duplicados | 3 claves afectadas |
+| Registros sobrantes por `ID_CLIENTE` | 3 registros |
+| Emails duplicados | 2 emails afectados |
+| Emails nulos | 2 registros |
+| IDs de pedido duplicados | 3 claves afectadas |
+| Registros sobrantes por `ID_PEDIDO` | 3 registros |
+| Pedidos con `ID_CLIENTE` nulo | 1 registro |
+| Pedidos con cliente inexistente | 2 registros |
+| Clientes sin pedidos | Al menos 2 registros |
+| Dimensiones del reporte final | 5 filas |
 
-**Síntoma:** Al ejecutar cualquier consulta del laboratorio, Snowflake devuelve el error:
-```
+---
+
+## Solución de Problemas
+
+### Problema 1 — Error: "Object does not exist" al consultar `CLIENTES_DIRTY` o `PEDIDOS_DIRTY`
+
+**Síntoma:** Al ejecutar cualquier consulta del laboratorio, Snowflake devuelve un error similar a:
+
+```text
 SQL compilation error: Object 'LAB_SQL_INTERMEDIO.VENTAS.CLIENTES_DIRTY' does not exist or not authorized.
 ```
 
-**Causa:** El script de setup `00_setup_laboratorios.sql` no fue ejecutado antes del laboratorio, o fue ejecutado en un database/schema diferente al esperado. También puede ocurrir si el rol activo no tiene permisos `SELECT` sobre las tablas del schema `VENTAS`.
+**Causa:** El script de setup no fue ejecutado antes del laboratorio, fue ejecutado en un database/schema diferente al esperado, o el rol activo no tiene permisos sobre las tablas del schema `VENTAS`.
 
 **Solución:**
 
 1. Verifica el contexto activo:
-   ```sql
-   SELECT CURRENT_DATABASE(), CURRENT_SCHEMA(), CURRENT_ROLE();
-   ```
-2. Si el database o schema no es correcto, ejecuta los comandos de configuración inicial del Paso 0:
-   ```sql
-   USE DATABASE LAB_SQL_INTERMEDIO;
-   USE SCHEMA VENTAS;
-   ```
-3. Si el problema persiste, verifica que las tablas existen en el schema:
-   ```sql
-   SHOW TABLES IN SCHEMA LAB_SQL_INTERMEDIO.VENTAS;
-   ```
-4. Si `CLIENTES_DIRTY` no aparece en la lista, contacta al instructor para que ejecute el script de setup. No es posible continuar el laboratorio sin este paso previo.
+
+```sql
+SELECT CURRENT_DATABASE(), CURRENT_SCHEMA(), CURRENT_ROLE();
+```
+
+2. Si el database o schema no es correcto, ejecuta:
+
+```sql
+USE DATABASE LAB_SQL_INTERMEDIO;
+USE SCHEMA VENTAS;
+```
+
+3. Verifica que las tablas existen:
+
+```sql
+SHOW TABLES IN SCHEMA LAB_SQL_INTERMEDIO.VENTAS;
+```
+
+4. Si `CLIENTES_DIRTY` o `PEDIDOS_DIRTY` no aparecen, regresa al archivo **`03_SETUP_DATOS_DUPLICADOS_DIRTY`** y ejecuta el script completo.
 
 ---
 
-### Problema 2: QUALIFY no es reconocida y genera error de sintaxis
+### Problema 2 — `QUALIFY` no es reconocida y genera error de sintaxis
 
-**Síntoma:** Al ejecutar una consulta con `QUALIFY`, Snowflake devuelve:
-```
+**Síntoma:** Al ejecutar una consulta con `QUALIFY`, Snowflake devuelve un error como:
+
+```text
 SQL compilation error: syntax error line X at position Y unexpected 'QUALIFY'.
 ```
-O bien, el editor de Snowsight marca `QUALIFY` como palabra no reconocida.
 
-**Causa:** Esto ocurre cuando la sesión está usando una versión de compatibilidad de SQL que no soporta `QUALIFY`, o cuando el estudiante está intentando ejecutar la consulta en otro motor (por ejemplo, en una instancia de PostgreSQL o MySQL que no tiene esta cláusula). También puede ocurrir si hay un error de escritura en la palabra clave.
+**Causa:** Puede ocurrir por un error de escritura, por ejecutar la consulta en otro motor SQL o por colocar `QUALIFY` en una posición incorrecta dentro de la consulta.
 
 **Solución:**
 
-1. Verifica que estás en Snowflake y no en otro motor:
-   ```sql
-   SELECT CURRENT_ACCOUNT(), CURRENT_REGION();
-   -- Si esto falla, no estás en Snowflake
-   ```
-2. Verifica la ortografía: `QUALIFY` (no `QUALIFIY`, `QUALIFY:`, ni `QUALIFY;` a mitad de consulta)
-3. Si confirmas que estás en Snowflake y el error persiste, usa la alternativa con subconsulta (Paso 3.2) que es funcionalmente equivalente:
-   ```sql
-   -- Reemplaza cualquier uso de QUALIFY con esta estructura:
-   SELECT * FROM (
-       SELECT columnas,
-              ROW_NUMBER() OVER (...) AS rn
-       FROM tabla
-   ) t
-   WHERE rn = 1;  -- o rn > 1, según el caso
-   ```
-4. Recuerda: `QUALIFY` es **exclusivo de Snowflake**. Si en el futuro necesitas portar este código a PostgreSQL, BigQuery estándar o MySQL, deberás usar siempre la versión con subconsulta.
+1. Verifica que estás ejecutando en Snowflake:
+
+```sql
+SELECT CURRENT_ACCOUNT(), CURRENT_REGION();
+```
+
+2. Verifica la ortografía: `QUALIFY`.
+3. Verifica que `QUALIFY` esté después de `FROM` / `WHERE` / `GROUP BY` si existen, y antes del `ORDER BY`.
+4. Si necesitas una alternativa más portable, usa la versión con subconsulta:
+
+```sql
+SELECT *
+FROM (
+    SELECT
+        columnas,
+        ROW_NUMBER() OVER (...) AS RN
+    FROM tabla
+) T
+WHERE RN = 1;
+```
 
 ---
 
-## Limpieza del Entorno
+### Problema 3 — El conteo de duplicados por email incluye valores nulos
 
-Al finalizar el laboratorio, ejecuta los siguientes comandos para liberar recursos y evitar consumo innecesario de créditos en tu cuenta trial:
+**Síntoma:** Al ejecutar la detección de duplicados por `EMAIL`, aparece un grupo `NULL` como si fuera un email duplicado.
+
+**Causa:** `NULL` no representa un valor real. Si hay varios registros sin email, agrupar por `EMAIL` puede generar un grupo `NULL`, pero eso no significa que todos sean el mismo cliente.
+
+**Solución:**
+
+Filtra los nulos antes de agrupar:
 
 ```sql
--- Suspender el warehouse para detener el consumo de créditos
--- IMPORTANTE: Ejecutar siempre al terminar la sesión
-ALTER WAREHOUSE LAB_WH SUSPEND;
+SELECT
+    EMAIL,
+    COUNT(*) AS VECES_REGISTRADO
+FROM CLIENTES_DIRTY
+WHERE EMAIL IS NOT NULL
+GROUP BY EMAIL
+HAVING COUNT(*) > 1;
 ```
 
-> ✅ **Verificación de suspensión:** En Snowsight, navega a **Admin > Warehouses** y confirma que `LAB_WH` muestra el estado **Suspended**. Las cuentas trial tienen 400 USD de créditos; un warehouse X-SMALL consume aproximadamente 1 crédito por hora de uso activo.
+---
 
-Las tablas `CLIENTES_DIRTY` y `PEDIDOS_DIRTY` **no deben modificarse ni eliminarse**, ya que son compartidas entre todos los estudiantes del curso y son necesarias para los laboratorios posteriores. Este laboratorio es de solo lectura (`SELECT`).
+## Limpieza del entorno
+
+Al finalizar el laboratorio, ejecuta los siguientes comandos para liberar recursos y evitar consumo innecesario de créditos Snowflake:
 
 ```sql
--- Confirmación: verificar que no realizaste cambios (solo lectura)
--- Esta consulta debe ejecutarse sin errores si no modificaste nada
-SELECT 'Laboratorio completado en modo solo lectura' AS estado;
+-- Suspender el warehouse para detener el consumo de créditos.
+-- IMPORTANTE: ejecutar siempre al terminar la sesión.
+ALTER WAREHOUSE COMPUTE_WH SUSPEND;
+```
+
+> ⚠️ **Recordatorio de créditos:** Las cuentas trial de Snowflake tienen 400 USD de créditos. Un warehouse `X-SMALL` consume aproximadamente 1 crédito por hora de actividad. Suspenderlo al terminar cada sesión es una práctica obligatoria en este curso.
+
+No es necesario eliminar tablas ni datos, ya que el schema `LAB_SQL_INTERMEDIO.VENTAS` es compartido por todos los laboratorios del curso y sus datos deben persistir para las sesiones siguientes.
+
+```sql
+-- Confirmación: laboratorio completado.
+SELECT 'Laboratorio completado. Warehouse suspendido al finalizar.' AS ESTADO;
 ```
 
 ---
 
 ## Resumen
 
-### Lo que Aprendiste en este Laboratorio
-
 En este laboratorio aplicaste tres técnicas fundamentales de auditoría y calidad de datos en Snowflake:
 
 | Técnica | Cuándo usarla | Limitación |
 |---|---|---|
 | `GROUP BY` + `HAVING COUNT(*) > 1` | Detectar qué claves tienen duplicados y cuántos | No indica cuál registro conservar |
-| `ROW_NUMBER() OVER(PARTITION BY ...)` | Numerar duplicados para seleccionar el canónico | Requiere definir un criterio de ordenación |
-| `QUALIFY` (Snowflake) | Filtrar resultados de window functions sin subconsulta | Exclusivo de Snowflake, no portable |
-| `LEFT JOIN` + `WHERE IS NULL` | Detectar registros huérfanos (referencias rotas) | Requiere identificar la tabla "padre" correcta |
+| `ROW_NUMBER() OVER(PARTITION BY ...)` | Numerar duplicados para seleccionar el registro canónico | Requiere definir un criterio de ordenación |
+| `QUALIFY` | Filtrar resultados de window functions sin subconsulta | Puede no ser portable a todos los motores SQL |
+| `LEFT JOIN` + `WHERE IS NULL` | Detectar registros huérfanos o referencias rotas | Requiere identificar correctamente la tabla padre |
 
-### Conceptos Clave para Recordar
+### Conceptos clave para recordar
 
-- **`HAVING` vs. `WHERE`:** `WHERE` filtra filas individuales antes del agrupamiento; `HAVING` filtra grupos después de aplicar funciones de agregación. Para trabajar con `COUNT()`, siempre necesitas `HAVING`.
-- **`COUNT(*) vs. COUNT(columna)`:** `COUNT(*)` cuenta todas las filas incluyendo nulos; `COUNT(columna)` solo cuenta filas donde esa columna no es nula. La diferencia entre ambos revela los nulos.
-- **`ROW_NUMBER()` como puente:** Esta función de ventana es la introducción formal a las window functions. En el Laboratorio 4 explorarás `RANK()`, `DENSE_RANK()`, `LAG()` y `LEAD()` con mayor profundidad.
-- **`QUALIFY` es una ventaja de Snowflake:** Mejora la legibilidad al evitar subconsultas, pero recuerda que no es SQL estándar. Siempre documenta su uso si compartes código con equipos que usan otros motores.
+1. **`HAVING` vs. `WHERE`:** `WHERE` filtra filas individuales antes del agrupamiento; `HAVING` filtra grupos después de aplicar funciones de agregación. Para trabajar con `COUNT()`, necesitas `HAVING`.
 
-### Conexión con los Próximos Laboratorios
+2. **`COUNT(*)` vs. `COUNT(columna)`:** `COUNT(*)` cuenta todas las filas incluyendo nulos; `COUNT(columna)` solo cuenta filas donde esa columna no es nula. La diferencia entre ambos revela los nulos.
 
-```
-Lab 01-02 (Fundamentos)
+3. **`ROW_NUMBER()` como puente:** Esta función de ventana es la introducción formal a las window functions. En el Laboratorio 4 explorarás `RANK()`, `DENSE_RANK()`, `LAG()` y `LEAD()` con mayor profundidad.
+
+4. **`QUALIFY` mejora la legibilidad:** Permite filtrar el resultado de una window function sin crear una subconsulta intermedia.
+
+### Conexión con los próximos laboratorios
+
+```text
+Lab 01 — CTEs y subqueries
        ↓
-Lab 03 (Este laboratorio)
+Lab 02 — CASE WHEN y segmentación
+       ↓
+Lab 03 — Este laboratorio
   ├── GROUP BY + HAVING → técnica base de auditoría
   ├── ROW_NUMBER() → introducción a window functions
   └── LEFT JOIN + IS NULL → integridad referencial
        ↓
-Lab 04 → Window functions avanzadas (RANK, DENSE_RANK, LAG, LEAD)
+Lab 04 — Window functions avanzadas
        ↓
-Lab 05 → Series temporales con window functions
+Lab 05 — Series temporales con window functions
 ```
 
-### Recursos de Referencia
+### Recursos adicionales
 
 | Recurso | URL |
 |---|---|
@@ -981,4 +1568,4 @@ Lab 05 → Series temporales con window functions
 
 ---
 
-> 📌 **Nota para el instructor:** Si el grupo termina antes de los 60 minutos, propón como extensión que los estudiantes intenten construir una vista (`CREATE OR REPLACE VIEW`) que consolide el reporte de calidad del Paso 5.2, de forma que pueda ser consultada en cualquier momento sin re-ejecutar la lógica. Esto refuerza el concepto de reutilización de consultas complejas y conecta con las buenas prácticas de escritura SQL del objetivo del curso.
+> 📌 **Nota para el instructor:** Si el grupo termina antes de los 60 minutos, propón como extensión que los estudiantes intenten construir una vista (`CREATE OR REPLACE VIEW`) que consolide el reporte de calidad del Ejercicio 5.2, de forma que pueda ser consultada en cualquier momento sin re-ejecutar la lógica. Esto refuerza el concepto de reutilización de consultas complejas y conecta con las buenas prácticas de escritura SQL del curso.
