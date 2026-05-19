@@ -48,7 +48,7 @@ Cada uno de estos laboratorios está diseñado para ofrecerte una experiencia pr
 
 - [Análisis de tendencias y métricas por periodo](Capitulo05/README.md#análisis-de-tendencias-y-métricas-por-periodo)
   
-  - Descripción: Actividad práctica guiada basada estrictamente en el contenido del módulo.
+  - Descripción: En esta práctica construirás análisis temporales en Snowflake usando funciones de fecha y window functions para agrupar ventas por período, comparar meses, calcular variaciones porcentuales, analizar tendencias Year-over-Year e identificar los mejores y peores meses de crecimiento.
     
   - ⏱️ Duración estimada: 50 min
 
