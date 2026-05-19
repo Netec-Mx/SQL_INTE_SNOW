@@ -1567,3 +1567,5 @@ Lab 05 — Series temporales con window functions
 | Documentación Snowflake: Window Functions | https://docs.snowflake.com/en/sql-reference/functions-analytic |
 
 ---
+
+*Lab 03-00-01 — Detección de duplicados y registros inconsistentes | LAB_SQL_INTERMEDIO | Módulo 3*
