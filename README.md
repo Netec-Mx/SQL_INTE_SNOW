@@ -16,57 +16,57 @@ Cada uno de estos laboratorios está diseñado para ofrecerte una experiencia pr
 
 - [Práctica 1: Reestructuración de consultas con CTE y subqueries](Capitulo01/README.md#reestructuración-de-consultas-con-cte-y-subqueries)
   
-  - Descripción: En esta práctica reestructurarás consultas SQL complejas usando subconsultas y CTEs, comparando ambos enfoques para mejorar la legibilidad, mantenibilidad y toma de decisiones técnicas.
+  - **Descripción:** En esta práctica reestructurarás consultas SQL complejas usando subconsultas y CTEs, comparando ambos enfoques para mejorar la legibilidad, mantenibilidad y toma de decisiones técnicas.
   
-  - ⏱️ Duración estimada: 60 min
+  - ⏱️ **Duración estimada:** 60 min
 
 ### Capítulo 2
 
 - [Clasificación de clientes y reglas de negocio](Capitulo02/README.md#clasificación-de-clientes-y-reglas-de-negocio)
   
-  - Descripción: En esta práctica aplicarás CASE WHEN para segmentar clientes con reglas de negocio, combinando monto, frecuencia y antigüedad para generar un dataset listo para reportes.
+  - **Descripción:** En esta práctica aplicarás CASE WHEN para segmentar clientes con reglas de negocio, combinando monto, frecuencia y antigüedad para generar un dataset listo para reportes.
     
-  - ⏱️ Duración estimada: 60 min
+  - ⏱️ **Duración estimada:** 60 min
 
 ### Capítulo 3
 
 - [Detección de duplicados y registros inconsistentes](Capitulo03/README.md#detección-de-duplicados-y-registros-inconsistentes)
   
-  - Descripción: En esta práctica detectarás problemas de calidad de datos, como duplicados, nulos y referencias inválidas, para construir un reporte consolidado.
+  - **Descripción:** En esta práctica detectarás problemas de calidad de datos, como duplicados, nulos y referencias inválidas, para construir un reporte consolidado.
     
-  - ⏱️ Duración estimada: 60 min
+  - ⏱️ **Duración estimada:** 60 min
 
 ### Capítulo 4
 
 - [Análisis de rankings y secuencias con window functions](Capitulo04/README.md#análisis-de-rankings-y-secuencias-con-window-functions)
   
-  - Descripción: En esta práctica aplicarás funciones analíticas de Snowflake para crear rankings, comparar ventas entre períodos y calcular acumulados y promedios móviles usando ventanas, particiones y marcos de análisis.
+  - **Descripción:** En esta práctica aplicarás funciones analíticas de Snowflake para crear rankings, comparar ventas entre períodos y calcular acumulados y promedios móviles usando ventanas, particiones y marcos de análisis.
     
-  - ⏱️ Duración estimada: 60 min
+  - ⏱️ **Duración estimada:** 60 min
 
 ### Capítulo 5
 
 - [Análisis de tendencias y métricas por periodo](Capitulo05/README.md#análisis-de-tendencias-y-métricas-por-periodo)
   
-  - Descripción: En esta práctica construirás análisis temporales en Snowflake usando funciones de fecha y window functions para agrupar ventas por período, comparar meses, calcular variaciones porcentuales, analizar tendencias Year-over-Year e identificar los mejores y peores meses de crecimiento.
+  - **Descripción:** En esta práctica construirás análisis temporales en Snowflake usando funciones de fecha y window functions para agrupar ventas por período, comparar meses, calcular variaciones porcentuales, analizar tendencias Year-over-Year e identificar los mejores y peores meses de crecimiento.
     
-  - ⏱️ Duración estimada: 50 min
+  - ⏱️ **Duración estimada:** 50 min
 
 ### Capítulo 6
 
 - [Validación y reconciliación de datasets](Capitulo06/README.md#validación-y-reconciliación-de-datasets)
   
-  - Descripción: En esta práctica compararás datasets origen y destino para detectar discrepancias en un pipeline ETL/ELT, usando EXCEPT, INTERSECT, agregados, checksums y CTEs reutilizables para construir un reporte completo de reconciliación y calidad de datos.
+  - **Descripción:** En esta práctica compararás datasets origen y destino para detectar discrepancias en un pipeline ETL/ELT, usando EXCEPT, INTERSECT, agregados, checksums y CTEs reutilizables para construir un reporte completo de reconciliación y calidad de datos.
     
-  - ⏱️ Duración estimada: 35 min
+  - ⏱️ **Duración estimada:** 35 min
 
 ### Capítulo 7
 
 - [Optimización y mejora de performance de queries](Capitulo07/README.md#optimización-y-mejora-de-performance-de-queries)
   
-  - Descripción: Actividad práctica guiada basada estrictamente en el contenido del módulo.
+  - **Descripción:** En esta práctica optimizarás queries SQL funcionales pero mal estructurados, aplicando formato, documentación, buenas prácticas y análisis de performance con Query Profile para medir mejoras y construir una consulta final mantenible y preparada para escalar.
     
-  - ⏱️ Duración estimada: 45 min
+  - ⏱️ **Duración estimada:** 45 min
 
 ## 📬 **Contacto y más información**
 
