@@ -1567,3 +1567,5 @@ En la siguiente práctica se puede reutilizar este dataset enriquecido para trab
 | Documentación Snowflake: WITH / CTE | https://docs.snowflake.com/en/sql-reference/constructs/with |
 
 ---
+
+*Lab 02-00-01 — Clasificación de clientes y reglas de negocio con CASE WHEN | LAB_SQL_INTERMEDIO | Módulo 2*
