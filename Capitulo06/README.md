@@ -1787,3 +1787,5 @@ Las técnicas de este laboratorio son la base para prácticas de calidad de dato
 | Great Expectations: Data validation | https://docs.greatexpectations.io/docs/ |
 
 ---
+
+*Lab 06-00-01 — Validación y reconciliación de datasets | LAB_SQL_INTERMEDIO | Módulo 6*
