@@ -8,14 +8,16 @@
 | **Complejidad** | Media |
 | **Nivel Bloom** | Aplicar (Apply) |
 | **Módulo** | 5 — Análisis de tendencias y métricas por periodo |
-| **Laboratorio previo requerido** | Lab 04 — Window Functions (LAG/LEAD, SUM OVER) |
 | **Schema de trabajo** | `LAB_SQL_INTERMEDIO.VENTAS` |
+| **Plataforma** | Snowflake (Snowsight Worksheet) |
 
 ---
 
 ## Descripción General
 
 En este laboratorio aplicarás las funciones de fecha de Snowflake aprendidas en la Lección 5.1 para construir análisis temporales completos sobre datos reales de ventas. Comenzarás agrupando ventas por semana, mes y trimestre usando `DATE_TRUNC`, luego construirás comparaciones mes a mes con `LAG()`, calcularás variaciones porcentuales entre períodos y finalmente identificarás los mejores y peores meses por crecimiento. El laboratorio conecta directamente las funciones de fecha con las window functions del Laboratorio 4, consolidando ambas habilidades en un reporte de tendencias cohesivo.
+
+La práctica está diseñada para trabajar con un dataset controlado de ventas históricas de 2022, 2023 y 2024. Esto permite analizar tendencias mensuales, comparaciones año contra año (*Year-over-Year*) y variaciones porcentuales sin depender de datos externos ni de un script previo del instructor. El setup incluido crea las tablas necesarias y carga datos suficientes para completar todos los pasos del laboratorio.
 
 ---
 
@@ -27,6 +29,8 @@ Al finalizar este laboratorio, serás capaz de:
 - [ ] Construir comparaciones de métricas entre períodos equivalentes (mes actual vs. mes anterior, año actual vs. año anterior) usando `LAG()` y CTEs.
 - [ ] Calcular tasas de variación porcentual entre períodos consecutivos e identificar tendencias de crecimiento en series temporales de ventas.
 - [ ] Generar un reporte de tendencias que clasifique los 3 mejores y 3 peores meses por variación porcentual de ventas.
+- [ ] Aplicar escritura defensiva con `NULLIF()` para evitar divisiones por cero en métricas porcentuales.
+- [ ] Organizar análisis temporales complejos mediante CTEs encadenadas para mejorar legibilidad y mantenimiento.
 
 ---
 
@@ -42,14 +46,16 @@ Al finalizar este laboratorio, serás capaz de:
 | CTEs | Uso de `WITH ... AS (...)` para organizar consultas de múltiples pasos |
 | Funciones de fecha (Lección 5.1) | `DATE_TRUNC`, `DATEDIFF`, `DATEADD`, `TO_CHAR`, `YEAR`, `MONTH` |
 
-### Acceso requerido
+### Acceso y configuración
 
-| Recurso | Detalle |
+| Requisito | Detalle |
 |---|---|
-| Cuenta Snowflake activa | Trial o corporativa con permisos de lectura sobre `LAB_SQL_INTERMEDIO` |
-| Warehouse disponible | `X-SMALL` suspendido al finalizar la sesión |
-| Script de setup ejecutado | `00_setup_laboratorios.sql` ejecutado por el instructor previamente |
-| Navegador web moderno | Chrome 110+, Firefox 110+, Edge 110+ o Safari 16+ |
+| Cuenta Snowflake activa | Trial o corporativa con rol que permita crear objetos en un database de práctica |
+| Script de setup ejecutado | No se asume script previo. Esta práctica incluye el setup completo de base, schema, tablas y datos. |
+| Database disponible | `LAB_SQL_INTERMEDIO` |
+| Schema disponible | `LAB_SQL_INTERMEDIO.VENTAS` |
+| Tablas requeridas | `CLIENTES`, `PRODUCTOS`, `PEDIDOS`, `VENTAS`, creadas en el Paso 0 |
+| Warehouse activo | `COMPUTE_WH` (tamaño `X-SMALL`) |
 
 ---
 
@@ -74,51 +80,427 @@ Al finalizar este laboratorio, serás capaz de:
 | Visual Studio Code (opcional) | 1.80+ | Edición previa de scripts |
 | SnowSQL (opcional) | 1.2.x+ | Alternativa CLI |
 
-### Configuración inicial del entorno
+---
 
-Antes de comenzar los ejercicios, ejecuta los siguientes comandos para establecer el contexto de trabajo correcto. Copia y pega este bloque completo en una nueva hoja de trabajo (worksheet) en Snowsight.
+## Organización recomendada de Workspace en Snowsight
+
+Para que la práctica sea ordenada y reutilizable, trabaja con un Workspace y 2 folders. En esta práctica se usa la palabra **workspace** como una separación lógica de trabajo dentro de Snowsight.
+
+| Workspace / Worksheet | Folder | Nombre sugerido | Uso |
+|---|---|---|---|
+| `SNOWLABS-INT` | `SETUP-LABS` | `05_SETUP_DATOS_TENDENCIAS_PERIODO` | Crear database, schema, tablas y datos temporales. Se ejecuta una vez al inicio o cuando quieras reiniciar el laboratorio. |
+| `SNOWLABS-INT` | `SCRIPT-LABS` | `05_LAB_TENDENCIAS_PERIODO` | Ejecutar los ejercicios del laboratorio sin mezclar el script de carga de datos. |
+
+### Paso 0.0 — Crear el workspace de las prácticas
+
+1. Entra a **Snowsight**.
+2. Da clic en la opción **Projects**.
+3. Clic en **+**.
+4. Luego selecciona la opción **Private workspace**.
+5. Nómbralo: **`SNOWLABS-INT`**.
+6. Clic en **Create**.
+
+---
+
+### Paso 0.0.1 — Crear el Folder y script que carga los datos
+
+1. Ahora dentro del nuevo workspace da clic en **+ Add new**.
+2. Clic en **Folder** y nómbralo: **`SETUP-LABS`**.
+3. Dentro del Folder **SETUP-LABS** da clic en el símbolo **+**.
+4. Crea un archivo de tipo **SQL**.
+5. Nómbralo: **`05_SETUP_DATOS_TENDENCIAS_PERIODO`**.
+6. Pega ahí el siguiente script completo.
+7. Ejecuta el script completo antes de comenzar el laboratorio.
+
+Este dataset está diseñado para activar todos los escenarios de la práctica:
+
+- Datos de ventas de 2022, 2023 y 2024 para análisis histórico.
+- 36 meses consecutivos con ventas para practicar `DATE_TRUNC`, `LAG()` y comparación YoY.
+- 108 registros de ventas: 3 ventas por mes.
+- Montos con estacionalidad para observar meses de crecimiento y caída.
+- Múltiples clientes, productos, regiones y canales para simular un dataset transaccional realista.
+- Tabla `PEDIDOS` derivada de `VENTAS` para mantener compatibilidad con el schema de prácticas anteriores.
 
 ```sql
--- ============================================================
--- CONFIGURACIÓN INICIAL DEL LABORATORIO 05-00-01
--- Ejecutar este bloque COMPLETO antes de comenzar los pasos
--- ============================================================
+-- 05_setup_datos_tendencias_periodo.sql
+-- Práctica Snowflake Intermedio
+-- Dataset controlado para completar el laboratorio:
+-- Análisis de tendencias y métricas por periodo
+--
+-- Objetivo del dataset:
+-- 1) Tener 36 meses consecutivos de datos: 2022, 2023 y 2024.
+-- 2) Tener 3 ventas por mes para permitir agregaciones temporales.
+-- 3) Tener variaciones claras mes a mes para identificar crecimiento y caída.
+-- 4) Tener datos suficientes para comparación Year-over-Year.
+-- 5) Evitar dependencia de CURRENT_DATE en los ejercicios de últimos 3 meses.
+-- 6) Mantener compatibilidad con prácticas anteriores: CLIENTES, PRODUCTOS, PEDIDOS y VENTAS.
 
--- 1. Seleccionar el rol adecuado
-USE ROLE SYSADMIN;
+USE WAREHOUSE COMPUTE_WH;
 
--- 2. Activar el warehouse (tamaño X-SMALL para minimizar créditos)
-USE WAREHOUSE LAB_WH;
+CREATE DATABASE IF NOT EXISTS LAB_SQL_INTERMEDIO;
+USE DATABASE LAB_SQL_INTERMEDIO;
 
--- 3. Establecer la base de datos y schema de trabajo
+CREATE SCHEMA IF NOT EXISTS VENTAS;
+USE SCHEMA VENTAS;
+
+-- Opcional para repetir el laboratorio desde cero.
+DROP TABLE IF EXISTS PEDIDOS;
+DROP TABLE IF EXISTS VENTAS;
+DROP TABLE IF EXISTS PRODUCTOS;
+DROP TABLE IF EXISTS CLIENTES;
+
+CREATE OR REPLACE TABLE CLIENTES (
+    ID_CLIENTE NUMBER(10,0) NOT NULL,
+    NOMBRE VARCHAR(100) NOT NULL,
+    EMAIL VARCHAR(120),
+    FECHA_REGISTRO DATE,
+    CIUDAD VARCHAR(80),
+    PAIS VARCHAR(80),
+    CONSTRAINT PK_CLIENTES PRIMARY KEY (ID_CLIENTE)
+);
+
+CREATE OR REPLACE TABLE PRODUCTOS (
+    ID_PRODUCTO NUMBER(10,0) NOT NULL,
+    NOMBRE_PRODUCTO VARCHAR(120) NOT NULL,
+    CATEGORIA VARCHAR(80) NOT NULL,
+    PRECIO_UNITARIO NUMBER(12,2),
+    ACTIVO BOOLEAN DEFAULT TRUE,
+    CONSTRAINT PK_PRODUCTOS PRIMARY KEY (ID_PRODUCTO)
+);
+
+CREATE OR REPLACE TABLE VENTAS (
+    ID_VENTA NUMBER(10,0) NOT NULL,
+    ID_CLIENTE NUMBER(10,0) NOT NULL,
+    ID_PRODUCTO NUMBER(10,0) NOT NULL,
+    ID_VENDEDOR NUMBER(10,0) NOT NULL,
+    REGION VARCHAR(40) NOT NULL,
+    FECHA_VENTA DATE NOT NULL,
+    MONTO_TOTAL NUMBER(12,2) NOT NULL,
+    CANAL VARCHAR(40),
+    CONSTRAINT PK_VENTAS PRIMARY KEY (ID_VENTA)
+);
+
+CREATE OR REPLACE TABLE PEDIDOS (
+    ID_PEDIDO NUMBER(10,0) NOT NULL,
+    ID_CLIENTE NUMBER(10,0) NOT NULL,
+    ID_PRODUCTO NUMBER(10,0) NOT NULL,
+    FECHA_PEDIDO DATE NOT NULL,
+    MONTO_TOTAL NUMBER(12,2) NOT NULL,
+    ESTADO_PEDIDO VARCHAR(30),
+    CONSTRAINT PK_PEDIDOS PRIMARY KEY (ID_PEDIDO)
+);
+
+INSERT INTO CLIENTES (ID_CLIENTE, NOMBRE, EMAIL, FECHA_REGISTRO, CIUDAD, PAIS) VALUES
+    (1,  'Ana Torres',       'ana.torres@example.com',       '2021-11-15', 'CDMX',        'México'),
+    (2,  'Luis Martínez',    'luis.martinez@example.com',    '2021-12-03', 'CDMX',        'México'),
+    (3,  'María López',      'maria.lopez@example.com',      '2022-01-20', 'Guadalajara', 'México'),
+    (4,  'Carlos Hernández', 'carlos.hernandez@example.com', '2022-02-12', 'Guadalajara', 'México'),
+    (5,  'Sofía Ramírez',    'sofia.ramirez@example.com',    '2022-03-18', 'Monterrey',   'México'),
+    (6,  'Jorge Castillo',   'jorge.castillo@example.com',   '2022-04-09', 'Monterrey',   'México'),
+    (7,  'Elena Flores',     'elena.flores@example.com',     '2022-05-24', 'Puebla',      'México'),
+    (8,  'Diego Sánchez',    'diego.sanchez@example.com',    '2022-06-11', 'Puebla',      'México'),
+    (9,  'Valeria Cruz',     'valeria.cruz@example.com',     '2022-07-05', 'Mérida',      'México'),
+    (10, 'Roberto Díaz',     'roberto.diaz@example.com',     '2022-08-01', 'Mérida',      'México'),
+    (11, 'Fernanda Ruiz',    'fernanda.ruiz@example.com',    '2022-09-14', 'Querétaro',   'México'),
+    (12, 'Miguel Navarro',   'miguel.navarro@example.com',   '2022-10-27', 'Querétaro',   'México');
+
+INSERT INTO PRODUCTOS (ID_PRODUCTO, NOMBRE_PRODUCTO, CATEGORIA, PRECIO_UNITARIO, ACTIVO) VALUES
+    (1, 'Laptop Pro 14',        'Electrónica',     1200.00, TRUE),
+    (2, 'Monitor 27 pulgadas',  'Electrónica',      350.00, TRUE),
+    (3, 'Teclado mecánico',     'Accesorios',       120.00, TRUE),
+    (4, 'Mouse inalámbrico',    'Accesorios',        80.00, TRUE),
+    (5, 'Silla ergonómica',     'Oficina',          420.00, TRUE),
+    (6, 'Escritorio ajustable', 'Oficina',          680.00, TRUE),
+    (7, 'Licencia BI anual',    'Software',         900.00, TRUE),
+    (8, 'Servidor compacto',    'Infraestructura', 1500.00, TRUE);
+
+-- Carga de 36 meses consecutivos.
+-- Se generan 3 ventas por mes a partir de un total mensual controlado.
+-- Los totales mensuales tienen estacionalidad:
+-- Q1 moderado, Q2 estable, Q3 variable, Q4 fuerte.
+-- Esto permite ver crecimiento, caída, comparación YoY y top/bottom meses.
+INSERT INTO VENTAS (
+    ID_VENTA,
+    ID_CLIENTE,
+    ID_PRODUCTO,
+    ID_VENDEDOR,
+    REGION,
+    FECHA_VENTA,
+    MONTO_TOTAL,
+    CANAL
+)
+WITH meses AS (
+    SELECT * FROM VALUES
+        (0,  '2022-01-01'::DATE, 12000),
+        (1,  '2022-02-01'::DATE, 10500),
+        (2,  '2022-03-01'::DATE, 13200),
+        (3,  '2022-04-01'::DATE, 15000),
+        (4,  '2022-05-01'::DATE, 14800),
+        (5,  '2022-06-01'::DATE, 16200),
+        (6,  '2022-07-01'::DATE, 13000),
+        (7,  '2022-08-01'::DATE, 11200),
+        (8,  '2022-09-01'::DATE, 14000),
+        (9,  '2022-10-01'::DATE, 17500),
+        (10, '2022-11-01'::DATE, 19000),
+        (11, '2022-12-01'::DATE, 26000),
+
+        (12, '2023-01-01'::DATE, 13800),
+        (13, '2023-02-01'::DATE, 12100),
+        (14, '2023-03-01'::DATE, 15800),
+        (15, '2023-04-01'::DATE, 17100),
+        (16, '2023-05-01'::DATE, 16900),
+        (17, '2023-06-01'::DATE, 18400),
+        (18, '2023-07-01'::DATE, 14900),
+        (19, '2023-08-01'::DATE, 12800),
+        (20, '2023-09-01'::DATE, 16200),
+        (21, '2023-10-01'::DATE, 20500),
+        (22, '2023-11-01'::DATE, 22500),
+        (23, '2023-12-01'::DATE, 31000),
+
+        (24, '2024-01-01'::DATE, 15400),
+        (25, '2024-02-01'::DATE, 13900),
+        (26, '2024-03-01'::DATE, 18100),
+        (27, '2024-04-01'::DATE, 19800),
+        (28, '2024-05-01'::DATE, 19200),
+        (29, '2024-06-01'::DATE, 21500),
+        (30, '2024-07-01'::DATE, 17000),
+        (31, '2024-08-01'::DATE, 14500),
+        (32, '2024-09-01'::DATE, 18800),
+        (33, '2024-10-01'::DATE, 23800),
+        (34, '2024-11-01'::DATE, 26700),
+        (35, '2024-12-01'::DATE, 36500)
+    AS m(MES_IDX, FECHA_BASE, TOTAL_MENSUAL)
+),
+detalle AS (
+    SELECT * FROM VALUES
+        (1, 0.45,  4, 'Web'),
+        (2, 0.35, 17, 'Ejecutivo'),
+        (3, 0.20, 26, 'Marketplace')
+    AS d(LINEA, FACTOR, DIA_OFFSET, CANAL)
+)
+SELECT
+    (m.MES_IDX * 10) + d.LINEA + 5000                                  AS ID_VENTA,
+    MOD(m.MES_IDX + d.LINEA, 12) + 1                                    AS ID_CLIENTE,
+    MOD(m.MES_IDX + d.LINEA, 8) + 1                                     AS ID_PRODUCTO,
+    MOD(m.MES_IDX + d.LINEA, 6) + 101                                   AS ID_VENDEDOR,
+    CASE MOD(m.MES_IDX + d.LINEA, 4)
+        WHEN 0 THEN 'Norte'
+        WHEN 1 THEN 'Centro'
+        WHEN 2 THEN 'Occidente'
+        ELSE 'Sur'
+    END                                                                 AS REGION,
+    DATEADD('day', d.DIA_OFFSET, m.FECHA_BASE)                          AS FECHA_VENTA,
+    ROUND(m.TOTAL_MENSUAL * d.FACTOR, 2)                                AS MONTO_TOTAL,
+    d.CANAL                                                             AS CANAL
+FROM meses m
+CROSS JOIN detalle d
+ORDER BY ID_VENTA;
+
+-- Tabla PEDIDOS derivada de VENTAS.
+-- Se crea para mantener compatibilidad con el schema general de prácticas.
+INSERT INTO PEDIDOS (
+    ID_PEDIDO,
+    ID_CLIENTE,
+    ID_PRODUCTO,
+    FECHA_PEDIDO,
+    MONTO_TOTAL,
+    ESTADO_PEDIDO
+)
+SELECT
+    ID_VENTA + 10000     AS ID_PEDIDO,
+    ID_CLIENTE,
+    ID_PRODUCTO,
+    FECHA_VENTA          AS FECHA_PEDIDO,
+    MONTO_TOTAL,
+    CASE
+        WHEN MOD(ID_VENTA, 17) = 0 THEN 'EN_PROCESO'
+        ELSE 'COMPLETADO'
+    END                  AS ESTADO_PEDIDO
+FROM VENTAS;
+
+-- Validación rápida del dataset.
+SELECT 'CLIENTES' AS TABLA, COUNT(*) AS FILAS FROM CLIENTES
+UNION ALL
+SELECT 'PRODUCTOS' AS TABLA, COUNT(*) AS FILAS FROM PRODUCTOS
+UNION ALL
+SELECT 'VENTAS' AS TABLA, COUNT(*) AS FILAS FROM VENTAS
+UNION ALL
+SELECT 'PEDIDOS' AS TABLA, COUNT(*) AS FILAS FROM PEDIDOS
+ORDER BY TABLA;
+
+-- Resultado esperado:
+-- CLIENTES  = 12
+-- PEDIDOS   = 108
+-- PRODUCTOS = 8
+-- VENTAS    = 108
+
+-- Validación temporal del dataset.
+SELECT
+    MIN(FECHA_VENTA) AS FECHA_MAS_ANTIGUA,
+    MAX(FECHA_VENTA) AS FECHA_MAS_RECIENTE,
+    COUNT(DISTINCT YEAR(FECHA_VENTA)) AS ANIOS_CON_DATOS,
+    COUNT(DISTINCT DATE_TRUNC('month', FECHA_VENTA)) AS MESES_CON_DATOS,
+    COUNT(*) AS TOTAL_REGISTROS
+FROM VENTAS;
+
+-- Resultado esperado:
+-- ANIOS_CON_DATOS = 3
+-- MESES_CON_DATOS = 36
+-- TOTAL_REGISTROS = 108
+
+-- Validación por año.
+SELECT
+    YEAR(FECHA_VENTA) AS ANIO,
+    COUNT(*) AS REGISTROS,
+    ROUND(SUM(MONTO_TOTAL), 2) AS VENTAS_TOTALES
+FROM VENTAS
+GROUP BY YEAR(FECHA_VENTA)
+ORDER BY ANIO;
+
+-- Resultado esperado:
+-- 2022, 2023 y 2024 con 36 registros cada uno.
+```
+
+---
+
+### Paso 0.0.2 — Crear el folder y script de laboratorio
+
+1. Da clic en el botón **+ Add new**.
+2. Clic en **Folder** y nómbralo: **`SCRIPT-LABS`**.
+3. Dentro de **SCRIPT-LABS** crea un archivo de tipo **SQL**.
+4. Nómbralo: **`05_LAB_TENDENCIAS_PERIODO`**.
+5. Usa este archivo para ejecutar los ejercicios del laboratorio.
+6. **No pegues aquí el script de carga completo; solo usa las consultas de análisis del laboratorio.**
+
+---
+
+### Paso 0.1 — Confirmar el contexto de trabajo
+
+Dentro del archivo **`05_LAB_TENDENCIAS_PERIODO`**, ejecuta lo siguiente:
+
+```sql
+USE WAREHOUSE COMPUTE_WH;
 USE DATABASE LAB_SQL_INTERMEDIO;
 USE SCHEMA VENTAS;
 
--- 4. Verificar que las tablas necesarias existen
-SHOW TABLES LIKE '%VENTAS%';
-SHOW TABLES LIKE '%PEDIDOS%';
-SHOW TABLES LIKE '%CLIENTES%';
+SELECT
+    CURRENT_WAREHOUSE() AS WAREHOUSE_ACTUAL,
+    CURRENT_DATABASE()  AS DATABASE_ACTUAL,
+    CURRENT_SCHEMA()    AS SCHEMA_ACTUAL;
 ```
 
-**Resultado esperado de la verificación:** Debes ver al menos las tablas `VENTAS`, `PEDIDOS` y `CLIENTES` listadas. Si no aparecen, contacta al instructor para que ejecute el script `00_setup_laboratorios.sql`.
+**Resultado esperado:**
 
-> ⚠️ **Recordatorio de créditos:** Este laboratorio usa un warehouse `X-SMALL`. Al terminar la sesión, ejecuta `ALTER WAREHOUSE LAB_WH SUSPEND;` para evitar consumo innecesario de créditos.
+| WAREHOUSE_ACTUAL | DATABASE_ACTUAL | SCHEMA_ACTUAL |
+|---|---|---|
+| COMPUTE_WH | LAB_SQL_INTERMEDIO | VENTAS |
+
+> ⚠️ **Recordatorio de créditos:** Este laboratorio usa un warehouse `X-SMALL`. Al terminar la sesión, ejecuta `ALTER WAREHOUSE COMPUTE_WH SUSPEND;` para evitar consumo innecesario de créditos.
 
 ---
 
-## Pasos del Laboratorio
+### Paso 0.2 — Confirmar que las tablas quedaron disponibles
+
+Ejecuta:
+
+```sql
+SHOW TABLES;
+```
+
+**Resultado esperado:** deben aparecer al menos estas tablas:
+
+| Tabla | Uso en la práctica |
+|---|---|
+| `CLIENTES` | Datos maestros de clientes para conteos únicos y continuidad del schema. |
+| `PRODUCTOS` | Catálogo base para mantener compatibilidad con prácticas anteriores. |
+| `PEDIDOS` | Tabla derivada de ventas para continuidad del entorno. |
+| `VENTAS` | Tabla principal del laboratorio de análisis temporal. |
 
 ---
 
-### Paso 1 — Exploración de la estructura temporal de los datos
+### Paso 0.3 — Validar volumen mínimo de datos
+
+Ejecuta:
+
+```sql
+SELECT 'CLIENTES' AS TABLA, COUNT(*) AS FILAS FROM CLIENTES
+UNION ALL
+SELECT 'PRODUCTOS' AS TABLA, COUNT(*) AS FILAS FROM PRODUCTOS
+UNION ALL
+SELECT 'VENTAS' AS TABLA, COUNT(*) AS FILAS FROM VENTAS
+UNION ALL
+SELECT 'PEDIDOS' AS TABLA, COUNT(*) AS FILAS FROM PEDIDOS
+ORDER BY TABLA;
+```
+
+**Resultado esperado:**
+
+| TABLA | FILAS |
+|---|---:|
+| CLIENTES | 12 |
+| PEDIDOS | 108 |
+| PRODUCTOS | 8 |
+| VENTAS | 108 |
+
+---
+
+### Paso 0.4 — Validar rango temporal del dataset
+
+Ejecuta:
+
+```sql
+SELECT
+    MIN(FECHA_VENTA)                                      AS fecha_mas_antigua,
+    MAX(FECHA_VENTA)                                      AS fecha_mas_reciente,
+    DATEDIFF('month', MIN(FECHA_VENTA), MAX(FECHA_VENTA)) AS meses_de_historia,
+    DATEDIFF('day',  MIN(FECHA_VENTA), MAX(FECHA_VENTA))  AS dias_de_historia,
+    COUNT(*)                                              AS total_registros,
+    COUNT(DISTINCT DATE_TRUNC('month', FECHA_VENTA))      AS meses_con_datos
+FROM VENTAS;
+```
+
+**Resultado esperado:**
+
+| FECHA_MAS_ANTIGUA | FECHA_MAS_RECIENTE | MESES_DE_HISTORIA | MESES_CON_DATOS | TOTAL_REGISTROS |
+|---|---|---:|---:|---:|
+| 2022-01-05 | 2024-12-27 | 35 | 36 | 108 |
+
+> Nota: `DATEDIFF('month', MIN(...), MAX(...))` devuelve la diferencia entre los límites de fecha, por eso puede mostrar `35`, aunque existan `36` meses con datos. La métrica más importante para este laboratorio es `MESES_CON_DATOS`.
+
+---
+
+### Paso 0.5 — Validar datos por año y mes
+
+Ejecuta:
+
+```sql
+SELECT
+    YEAR(FECHA_VENTA) AS ANIO,
+    COUNT(*) AS TOTAL_REGISTROS,
+    COUNT(DISTINCT DATE_TRUNC('month', FECHA_VENTA)) AS MESES_CON_DATOS,
+    ROUND(SUM(MONTO_TOTAL), 2) AS VENTAS_TOTALES
+FROM VENTAS
+GROUP BY YEAR(FECHA_VENTA)
+ORDER BY ANIO;
+```
+
+**Resultado esperado:** deben aparecer los años `2022`, `2023` y `2024`, cada uno con `36` registros y `12` meses con datos.
+
+---
+
+## Ejercicios Paso a Paso
+
+---
+
+### Ejercicio 1 — Exploración de la estructura temporal de los datos
 
 **Objetivo:** Familiarizarte con el rango de fechas disponible en la tabla `VENTAS` y validar que existen al menos 24 meses de datos históricos para el análisis de tendencias.
 
 #### Instrucciones
 
-1. Abre una nueva worksheet en Snowsight y asegúrate de que el contexto esté configurado con `LAB_SQL_INTERMEDIO.VENTAS`.
+**Paso 1.1 — Verificar estructura de la tabla**
 
-2. Ejecuta la siguiente consulta para explorar la estructura y el rango temporal de los datos:
+Abre una nueva worksheet en Snowsight y asegúrate de que el contexto esté configurado con `LAB_SQL_INTERMEDIO.VENTAS`.
 
 ```sql
 -- ============================================================
@@ -129,21 +511,21 @@ SHOW TABLES LIKE '%CLIENTES%';
 DESCRIBE TABLE VENTAS;
 ```
 
-3. Ejecuta la consulta de rango temporal:
+**Paso 1.2 — Ejecuta la consulta de rango temporal:**
 
 ```sql
 -- 1b. Rango de fechas y volumen de datos disponibles
 SELECT
-    MIN(FECHA_VENTA)                                    AS fecha_mas_antigua,
-    MAX(FECHA_VENTA)                                    AS fecha_mas_reciente,
+    MIN(FECHA_VENTA)                                      AS fecha_mas_antigua,
+    MAX(FECHA_VENTA)                                      AS fecha_mas_reciente,
     DATEDIFF('month', MIN(FECHA_VENTA), MAX(FECHA_VENTA)) AS meses_de_historia,
-    DATEDIFF('day',  MIN(FECHA_VENTA), MAX(FECHA_VENTA)) AS dias_de_historia,
-    COUNT(*)                                            AS total_registros,
-    COUNT(DISTINCT DATE_TRUNC('month', FECHA_VENTA))    AS meses_con_datos
+    DATEDIFF('day',  MIN(FECHA_VENTA), MAX(FECHA_VENTA))  AS dias_de_historia,
+    COUNT(*)                                              AS total_registros,
+    COUNT(DISTINCT DATE_TRUNC('month', FECHA_VENTA))      AS meses_con_datos
 FROM VENTAS;
 ```
 
-4. Ejecuta una exploración rápida de los primeros registros para entender las columnas disponibles:
+**Paso 1.3 — Ejecuta una exploración rápida de los primeros registros para entender las columnas disponibles:**
 
 ```sql
 -- 1c. Muestra de registros con componentes de fecha extraídos
@@ -165,10 +547,10 @@ LIMIT 10;
 La consulta `1b` debe mostrar una fila con valores similares a:
 
 | fecha_mas_antigua | fecha_mas_reciente | meses_de_historia | dias_de_historia | total_registros | meses_con_datos |
-|---|---|---|---|---|---|
-| 2022-01-01 | 2024-12-31 | 36 | ~1095 | ~50,000+ | 36 |
+|---|---|---:|---:|---:|---:|
+| 2022-01-05 | 2024-12-27 | 35 | ~1087 | 108 | 36 |
 
-> Si `meses_de_historia` es menor a 24, notifica al instructor antes de continuar.
+> Si `meses_con_datos` es menor a 24, detén el laboratorio y revisa si ejecutaste correctamente el setup del Paso 0.
 
 #### Verificación
 
@@ -182,17 +564,19 @@ GROUP BY YEAR(FECHA_VENTA)
 ORDER BY anio;
 ```
 
-Debes ver al menos 2 años distintos con registros. Si ves 3 años, el dataset está completo para todos los ejercicios de este laboratorio.
+Debes ver `2022`, `2023` y `2024`, cada uno con registros. Esto confirma que el dataset está completo para todos los ejercicios de este laboratorio.
 
 ---
 
-### Paso 2 — Agrupación temporal con DATE_TRUNC
+### Ejercicio 2 — Agrupación temporal con DATE_TRUNC
 
 **Objetivo:** Practicar el uso de `DATE_TRUNC` para agregar métricas de ventas a diferentes niveles de granularidad temporal: semanal, mensual y trimestral.
 
 #### Instrucciones
 
-1. Construye primero la agrupación **mensual**, que será la base de los análisis siguientes:
+**Paso 2.1 — Ventas totales agrupadas por mes**
+
+Construye primero la agrupación **mensual**, que será la base de los análisis siguientes:
 
 ```sql
 -- ============================================================
@@ -211,7 +595,9 @@ GROUP BY DATE_TRUNC('month', FECHA_VENTA)
 ORDER BY periodo_mes;
 ```
 
-2. Construye la agrupación **trimestral** para identificar estacionalidad a nivel macro:
+**Paso 2.2 — Ventas totales agrupadas por trimestre**
+
+Construye la agrupación **trimestral** para identificar estacionalidad a nivel macro:
 
 ```sql
 -- ============================================================
@@ -234,55 +620,64 @@ GROUP BY
 ORDER BY periodo_trimestre;
 ```
 
-3. Construye la agrupación **semanal** para detectar patrones de corto plazo (limita el resultado a los últimos 3 meses para legibilidad):
+**Paso 2.3 — Ventas por semana en los últimos 3 meses del dataset**
+
+Construye la agrupación **semanal** para detectar patrones de corto plazo. En lugar de usar `CURRENT_DATE`, se usa la fecha máxima del dataset para que la práctica funcione igual sin importar cuándo se ejecute.
 
 ```sql
 -- ============================================================
--- PASO 2C: Ventas por SEMANA (últimos 3 meses)
+-- PASO 2C: Ventas por SEMANA (últimos 3 meses del dataset)
 -- ============================================================
+WITH rango AS (
+    SELECT MAX(FECHA_VENTA) AS fecha_maxima
+    FROM VENTAS
+)
 SELECT
-    DATE_TRUNC('week', FECHA_VENTA)             AS inicio_semana,
+    DATE_TRUNC('week', v.FECHA_VENTA)             AS inicio_semana,
     DATEADD('day', 6,
-        DATE_TRUNC('week', FECHA_VENTA))        AS fin_semana,
-    COUNT(*)                                    AS cantidad_ventas,
-    ROUND(SUM(MONTO_TOTAL), 2)                  AS ventas_totales
-FROM VENTAS
-WHERE FECHA_VENTA >= DATEADD('month', -3, CURRENT_DATE)
-GROUP BY DATE_TRUNC('week', FECHA_VENTA)
+        DATE_TRUNC('week', v.FECHA_VENTA))        AS fin_semana,
+    COUNT(*)                                      AS cantidad_ventas,
+    ROUND(SUM(v.MONTO_TOTAL), 2)                  AS ventas_totales
+FROM VENTAS v
+CROSS JOIN rango r
+WHERE v.FECHA_VENTA >= DATEADD('month', -3, r.fecha_maxima)
+GROUP BY DATE_TRUNC('week', v.FECHA_VENTA)
 ORDER BY inicio_semana DESC;
 ```
 
 #### Resultado esperado
 
-- **2A (mensual):** Una fila por mes con ventas agregadas. El número de filas debe coincidir con `meses_con_datos` del Paso 1.
-- **2B (trimestral):** Una fila por trimestre. Si tienes 3 años de datos, verás ~12 filas.
-- **2C (semanal):** Aproximadamente 12–13 semanas listadas en orden descendente.
+- **2A (mensual):** Una fila por mes con ventas agregadas. El número de filas debe coincidir con `meses_con_datos` del Paso 1. Con este dataset deben aparecer `36` filas.
+- **2B (trimestral):** Una fila por trimestre. Con 3 años de datos, verás `12` filas.
+- **2C (semanal):** Semanas correspondientes a los últimos 3 meses del dataset, tomando como referencia la fecha máxima de `VENTAS`.
 
 > **Observa** cómo `DATE_TRUNC('month', fecha)` siempre devuelve el primer día del mes (ej. `2024-03-01`), no una cadena de texto. Esto permite ordenar correctamente con `ORDER BY`.
 
 #### Verificación
 
 ```sql
--- Verificar que DATE_TRUNC produce el tipo de dato correcto
+-- Verificar que DATE_TRUNC produce un tipo temporal y no una cadena de texto
 SELECT
-    DATE_TRUNC('month', CURRENT_DATE)          AS tipo_date,
+    DATE_TRUNC('month', CURRENT_DATE)          AS fecha_truncada,
     TO_CHAR(DATE_TRUNC('month', CURRENT_DATE),
-            'YYYY-MM')                         AS tipo_varchar,
-    TYPEOF(DATE_TRUNC('month', CURRENT_DATE))  AS tipo_de_dato
+            'YYYY-MM')                         AS fecha_formateada,
+    SYSTEM$TYPEOF(DATE_TRUNC('month', CURRENT_DATE))  AS tipo_de_dato
 FROM DUAL;
 ```
 
-Debes ver `DATE` o `TIMESTAMP_NTZ` en la columna `tipo_de_dato`. Esto confirma que `DATE_TRUNC` mantiene el tipo nativo de fecha, lo que es esencial para los cálculos del siguiente paso.
+Debes observar que `DATE_TRUNC` mantiene un tipo temporal (`DATE` o `TIMESTAMP_NTZ`, dependiendo de la expresión), mientras que `TO_CHAR` produce una representación textual. Esto es esencial para ordenar y calcular correctamente en los siguientes pasos.
 
 ---
 
-### Paso 3 — Comparación mes a mes con LAG()
+### Ejercicio 3 — Comparación mes a mes con LAG()
 
 **Objetivo:** Construir una comparación de ventas entre el mes actual y el mes anterior usando la función de ventana `LAG()` sobre la serie temporal mensual creada en el Paso 2.
 
 #### Instrucciones
 
-1. Construye la consulta base con `LAG()` para traer el valor del mes anterior junto al mes actual. Este patrón conecta directamente con lo aprendido en el Laboratorio 4:
+**Paso 3.1 — Comparación mes actual vs. mes anterior con LAG()**
+
+Construye la consulta base con `LAG()` para traer el valor del mes anterior junto al mes actual. Este patrón conecta directamente con lo aprendido en el Laboratorio 4:
 
 ```sql
 -- ============================================================
@@ -308,7 +703,9 @@ FROM (
 ORDER BY periodo_mes;
 ```
 
-2. Refactoriza la consulta anterior usando una CTE para mayor legibilidad (buena práctica recomendada en el curso):
+**Paso 3.2 — Refactorizar usando CTEs**
+
+Refactoriza la consulta anterior usando una CTE para mayor legibilidad. Esta es la versión recomendada para ambientes empresariales porque separa la agrupación base de la lógica analítica.
 
 ```sql
 -- ============================================================
@@ -354,10 +751,10 @@ ORDER BY periodo_mes;
 Debes ver una tabla con columnas similares a:
 
 | etiqueta_mes | ventas_mes_actual | ventas_mes_anterior | diferencia_absoluta | tendencia |
-|---|---|---|---|---|
-| 2022-01 | 125,430.00 | NULL | NULL | N/A (primer mes) |
-| 2022-02 | 118,920.50 | 125,430.00 | -6,509.50 | ▼ Caída |
-| 2022-03 | 134,210.75 | 118,920.50 | 15,290.25 | ▲ Crecimiento |
+|---|---:|---:|---:|---|
+| 2022-01 | 12000.00 | NULL | NULL | N/A (primer mes) |
+| 2022-02 | 10500.00 | 12000.00 | -1500.00 | ▼ Caída |
+| 2022-03 | 13200.00 | 10500.00 | 2700.00 | ▲ Crecimiento |
 | ... | ... | ... | ... | ... |
 
 > **Nota:** La primera fila siempre tendrá `NULL` en `ventas_mes_anterior` porque `LAG()` no tiene fila previa para el primer período. Esto es comportamiento esperado y correcto.
@@ -372,26 +769,34 @@ WITH ventas_mensuales AS (
         ROUND(SUM(MONTO_TOTAL), 2)       AS ventas_totales
     FROM VENTAS
     GROUP BY DATE_TRUNC('month', FECHA_VENTA)
+),
+lag_calculado AS (
+    SELECT
+        periodo_mes,
+        ventas_totales,
+        LAG(ventas_totales) OVER (ORDER BY periodo_mes) AS ventas_mes_anterior
+    FROM ventas_mensuales
 )
 SELECT
-    COUNT(*)                                                    AS total_filas,
-    COUNT(LAG(ventas_totales) OVER (ORDER BY periodo_mes))      AS filas_con_mes_anterior,
-    COUNT(*) - COUNT(LAG(ventas_totales)
-        OVER (ORDER BY periodo_mes))                            AS filas_null_esperadas
-FROM ventas_mensuales;
+    COUNT(*) AS total_filas,
+    COUNT(ventas_mes_anterior) AS filas_con_mes_anterior,
+    COUNT(*) - COUNT(ventas_mes_anterior) AS filas_null_esperadas
+FROM lag_calculado;
 ```
 
 `filas_null_esperadas` debe ser exactamente `1` (el primer mes del dataset).
 
 ---
 
-### Paso 4 — Cálculo de variación porcentual
+### Ejercicio 4 — Cálculo de variación porcentual
 
 **Objetivo:** Extender la comparación del Paso 3 para calcular la tasa de variación porcentual entre períodos consecutivos, identificando los meses de mayor crecimiento y mayor caída.
 
 #### Instrucciones
 
-1. Agrega el cálculo de variación porcentual a la CTE del Paso 3. La fórmula es: `((actual - anterior) / anterior) * 100`:
+**Paso 4.1 — Variación porcentual mes a mes**
+
+Agrega el cálculo de variación porcentual a la CTE del Paso 3. La fórmula es: `((actual - anterior) / anterior) * 100`.
 
 ```sql
 -- ============================================================
@@ -431,18 +836,20 @@ SELECT
     variacion_pct,
     -- Clasificación de la magnitud del cambio
     CASE
-        WHEN variacion_pct IS NULL       THEN 'Sin referencia'
-        WHEN variacion_pct >= 10         THEN '🚀 Alto crecimiento'
-        WHEN variacion_pct BETWEEN 0 AND 9.99  THEN '📈 Crecimiento moderado'
+        WHEN variacion_pct IS NULL                 THEN 'Sin referencia'
+        WHEN variacion_pct >= 10                   THEN '🚀 Alto crecimiento'
+        WHEN variacion_pct BETWEEN 0 AND 9.99       THEN '📈 Crecimiento moderado'
         WHEN variacion_pct BETWEEN -9.99 AND -0.01 THEN '📉 Caída moderada'
-        WHEN variacion_pct <= -10        THEN '⚠️ Caída significativa'
+        WHEN variacion_pct <= -10                  THEN '⚠️ Caída significativa'
         ELSE 'Sin cambio'
     END AS clasificacion_variacion
 FROM comparacion_mensual
 ORDER BY periodo_mes;
 ```
 
-2. Analiza la distribución de las variaciones para tener una vista estadística de la volatilidad mensual:
+**Paso 4.2 — Estadísticas de variación porcentual**
+
+Analiza la distribución de las variaciones para tener una vista estadística de la volatilidad mensual:
 
 ```sql
 -- ============================================================
@@ -468,18 +875,18 @@ variaciones AS (
     FROM ventas_mensuales
 )
 SELECT
-    COUNT(variacion_pct)        AS meses_con_variacion,
-    ROUND(AVG(variacion_pct), 2) AS variacion_promedio_pct,
-    ROUND(MAX(variacion_pct), 2) AS mayor_crecimiento_pct,
-    ROUND(MIN(variacion_pct), 2) AS mayor_caida_pct,
-    ROUND(STDDEV(variacion_pct), 2) AS desviacion_estandar_pct
+    COUNT(variacion_pct)             AS meses_con_variacion,
+    ROUND(AVG(variacion_pct), 2)     AS variacion_promedio_pct,
+    ROUND(MAX(variacion_pct), 2)     AS mayor_crecimiento_pct,
+    ROUND(MIN(variacion_pct), 2)     AS mayor_caida_pct,
+    ROUND(STDDEV(variacion_pct), 2)  AS desviacion_estandar_pct
 FROM variaciones
 WHERE variacion_pct IS NOT NULL;
 ```
 
 #### Resultado esperado
 
-- **4A:** Tabla con una fila por mes mostrando la variación porcentual y su clasificación. Los valores de `variacion_pct` deben ser números decimales (positivos = crecimiento, negativos = caída).
+- **4A:** Tabla con una fila por mes mostrando la variación porcentual y su clasificación. Los valores de `variacion_pct` deben ser números decimales: positivos para crecimiento y negativos para caída.
 - **4B:** Una sola fila con estadísticas descriptivas de la volatilidad mensual.
 
 > **Importante:** El uso de `NULLIF(..., 0)` en el denominador previene errores de división por cero si algún mes tiene ventas registradas en cero. Esta es una práctica de escritura defensiva que debes aplicar siempre en cálculos de porcentajes.
@@ -487,7 +894,7 @@ WHERE variacion_pct IS NOT NULL;
 #### Verificación
 
 ```sql
--- Verificar que no hay errores de división por cero
+-- Verificar que no hay meses con ventas en cero
 WITH ventas_mensuales AS (
     SELECT
         DATE_TRUNC('month', FECHA_VENTA) AS periodo_mes,
@@ -500,17 +907,19 @@ FROM ventas_mensuales
 WHERE ventas_totales = 0;
 ```
 
-Si el resultado es `0`, no hay riesgo de división por cero en los datos actuales. Si es mayor a `0`, el uso de `NULLIF` en el Paso 4A es imprescindible.
+Con este dataset el resultado debe ser `0`. Si en otro dataset el resultado es mayor a `0`, el uso de `NULLIF` en el Paso 4A es imprescindible.
 
 ---
 
-### Paso 5 — Comparación año sobre año (YoY)
+### Ejercicio 5 — Comparación año sobre año (YoY)
 
-**Objetivo:** Construir una comparación Year-over-Year (YoY) que permita comparar el desempeño de cada mes en el año actual contra el mismo mes del año anterior, usando CTEs y `DATEADD`.
+**Objetivo:** Construir una comparación Year-over-Year (YoY) que permita comparar el desempeño de cada mes en el año actual contra el mismo mes del año anterior, usando CTEs y un self-join.
 
 #### Instrucciones
 
-1. Construye la comparación YoY usando un self-join sobre la CTE de ventas mensuales. Este enfoque es portable y muy legible:
+**Paso 5.1 — Comparación Year-over-Year con self-join en CTE**
+
+Construye la comparación YoY usando un self-join sobre la CTE de ventas mensuales. Este enfoque es portable y muy legible:
 
 ```sql
 -- ============================================================
@@ -553,7 +962,9 @@ ORDER BY
     anio_actual.mes_numero;
 ```
 
-2. Construye una vista pivotada alternativa que muestre los años como columnas para comparar visualmente (útil para presentaciones):
+**Paso 5.2 — Vista pivotada de ventas por mes y año**
+
+Construye una vista pivotada alternativa que muestre los años como columnas para comparar visualmente. Esta vista es útil para presentaciones y reportes ejecutivos:
 
 ```sql
 -- ============================================================
@@ -561,9 +972,8 @@ ORDER BY
 -- ============================================================
 SELECT
     MONTH(FECHA_VENTA)                      AS mes_numero,
-    TO_CHAR(DATE_TRUNC('month',
-        DATE_FROM_PARTS(2000, MONTH(FECHA_VENTA), 1)),
-        'Month')                            AS nombre_mes,
+    TRIM(TO_CHAR(DATE_FROM_PARTS(2000, MONTH(FECHA_VENTA), 1),
+        'Month'))                           AS nombre_mes,
     ROUND(SUM(CASE WHEN YEAR(FECHA_VENTA) = 2022
                    THEN MONTO_TOTAL ELSE 0 END), 2) AS ventas_2022,
     ROUND(SUM(CASE WHEN YEAR(FECHA_VENTA) = 2023
@@ -573,9 +983,8 @@ SELECT
 FROM VENTAS
 GROUP BY
     MONTH(FECHA_VENTA),
-    TO_CHAR(DATE_TRUNC('month',
-        DATE_FROM_PARTS(2000, MONTH(FECHA_VENTA), 1)),
-        'Month')
+    TRIM(TO_CHAR(DATE_FROM_PARTS(2000, MONTH(FECHA_VENTA), 1),
+        'Month'))
 ORDER BY mes_numero;
 ```
 
@@ -583,8 +992,8 @@ ORDER BY mes_numero;
 
 #### Resultado esperado
 
-- **5A:** Una fila por mes mostrando ventas del año actual vs. año anterior y la variación YoY. Los meses del primer año del dataset tendrán `NULL` en `ventas_anio_anterior` (comportamiento correcto del `LEFT JOIN`).
-- **5B:** 12 filas (una por mes del año), con columnas separadas por año, permitiendo comparar visualmente el desempeño estacional.
+- **5A:** Una fila por mes mostrando ventas del año actual vs. año anterior y la variación YoY. Los meses del primer año del dataset tendrán `NULL` en `ventas_anio_anterior`, que es el comportamiento correcto del `LEFT JOIN`.
+- **5B:** `12` filas, una por mes del año, con columnas separadas para `2022`, `2023` y `2024`, permitiendo comparar visualmente el desempeño estacional.
 
 #### Verificación
 
@@ -603,8 +1012,8 @@ WITH ventas_mensuales AS (
         MONTH(FECHA_VENTA)
 )
 SELECT
-    COUNT(*)                                   AS total_filas_yoy,
-    COUNT(anio_anterior.ventas_totales)        AS filas_con_comparacion,
+    COUNT(*)                                      AS total_filas_yoy,
+    COUNT(anio_anterior.ventas_totales)           AS filas_con_comparacion,
     COUNT(*) - COUNT(anio_anterior.ventas_totales) AS filas_sin_anio_anterior
 FROM ventas_mensuales AS anio_actual
 LEFT JOIN ventas_mensuales AS anio_anterior
@@ -612,17 +1021,19 @@ LEFT JOIN ventas_mensuales AS anio_anterior
    AND anio_actual.anio       = anio_anterior.anio + 1;
 ```
 
-`filas_sin_anio_anterior` debe corresponder a los 12 meses del primer año del dataset (que no tienen año previo para comparar).
+Con este dataset, `filas_sin_anio_anterior` debe ser `12`, correspondientes a los 12 meses de 2022 que no tienen año previo para comparar.
 
 ---
 
-### Paso 6 — Reporte de tendencias: Top 3 mejores y peores meses
+### Ejercicio 6 — Reporte de tendencias: Top 3 mejores y peores meses
 
 **Objetivo:** Construir el reporte final que identifique los 3 meses con mayor crecimiento y los 3 meses con mayor caída en ventas, consolidando todas las técnicas del laboratorio en una consulta analítica completa.
 
 #### Instrucciones
 
-1. Construye el reporte completo de tendencias usando múltiples CTEs encadenadas:
+**Paso 6.1 — Reporte de tendencias Top 3 mejores y peores meses**
+
+Construye el reporte completo de tendencias usando múltiples CTEs encadenadas:
 
 ```sql
 -- ============================================================
@@ -706,7 +1117,9 @@ WHERE rank_caida <= 3
 ORDER BY categoria, posicion;
 ```
 
-2. Complementa el reporte con un análisis de patrones estacionales por trimestre:
+**Paso 6.2 — Análisis de estacionalidad trimestral**
+
+Complementa el reporte con un análisis de patrones estacionales por trimestre:
 
 ```sql
 -- ============================================================
@@ -750,22 +1163,22 @@ ORDER BY t.numero_trimestre;
 #### Resultado esperado
 
 - **6A:** 6 filas en total: 3 bajo la categoría `TOP CRECIMIENTO` y 3 bajo `TOP CAÍDA`, ordenadas por posición dentro de cada categoría.
-- **6B:** 4 filas (una por trimestre) mostrando si cada trimestre está por encima o por debajo del promedio, permitiendo identificar estacionalidad clara.
+- **6B:** 4 filas, una por trimestre, mostrando si cada trimestre está por encima o por debajo del promedio, permitiendo identificar estacionalidad clara.
 
 Ejemplo parcial del resultado de 6A:
 
 | categoria | posicion | etiqueta_mes | ventas_totales | ventas_mes_anterior | variacion_pct |
-|---|---|---|---|---|---|
-| TOP CAÍDA | 1 | 2022-08 | 89,340.00 | 142,120.50 | -37.13 |
-| TOP CAÍDA | 2 | 2023-02 | 95,670.25 | 138,450.00 | -30.90 |
+|---|---:|---|---:|---:|---:|
+| TOP CAÍDA | 1 | 2022-08 | 11200.00 | 13000.00 | -13.85 |
+| TOP CAÍDA | 2 | 2023-08 | 12800.00 | 14900.00 | -14.09 |
 | TOP CAÍDA | 3 | ... | ... | ... | ... |
-| TOP CRECIMIENTO | 1 | 2022-12 | 198,450.75 | 124,310.00 | 59.63 |
+| TOP CRECIMIENTO | 1 | 2022-12 | 26000.00 | 19000.00 | 36.84 |
 | TOP CRECIMIENTO | 2 | ... | ... | ... | ... |
 
 #### Verificación
 
 ```sql
--- Verificar que el reporte tiene exactamente 6 filas
+-- Verificar que el reporte tiene exactamente 6 filas con este dataset
 WITH ventas_mensuales AS (
     SELECT
         DATE_TRUNC('month', FECHA_VENTA) AS periodo_mes,
@@ -783,22 +1196,35 @@ variaciones AS (
             * 100,
         2) AS variacion_pct
     FROM ventas_mensuales
-    QUALIFY variacion_pct IS NOT NULL
+),
+variaciones_filtradas AS (
+    SELECT *
+    FROM variaciones
+    WHERE variacion_pct IS NOT NULL
 ),
 ranking AS (
     SELECT
         ROW_NUMBER() OVER (ORDER BY variacion_pct DESC) AS rank_crec,
         ROW_NUMBER() OVER (ORDER BY variacion_pct ASC)  AS rank_caida
-    FROM variaciones
+    FROM variaciones_filtradas
 )
 SELECT COUNT(*) AS filas_reporte_final
-FROM ranking
-WHERE rank_crec <= 3 OR rank_caida <= 3;
+FROM (
+    SELECT rank_crec, rank_caida
+    FROM ranking
+    WHERE rank_crec <= 3
+
+    UNION ALL
+
+    SELECT rank_crec, rank_caida
+    FROM ranking
+    WHERE rank_caida <= 3
+);
 ```
 
-> **Nota sobre QUALIFY:** Esta cláusula es exclusiva de Snowflake y permite filtrar directamente sobre el resultado de una window function sin necesidad de una subconsulta adicional. No es portable a PostgreSQL ni MySQL. Aquí se usa como alternativa compacta al `WHERE variacion_pct IS NOT NULL` de la CTE.
-
 El resultado debe ser `6`.
+
+> **Nota sobre QUALIFY:** Esta cláusula es exclusiva de Snowflake y permite filtrar directamente sobre el resultado de una window function sin necesidad de una subconsulta adicional. No es portable a PostgreSQL ni MySQL. En esta práctica se prioriza la claridad del flujo con CTEs, pero puedes usar `QUALIFY` como alternativa compacta cuando ya domines el patrón.
 
 ---
 
@@ -812,12 +1238,13 @@ Una vez completados todos los pasos, ejecuta el siguiente script de validación 
 -- Ejecutar completo para verificar todos los pasos
 -- ============================================================
 
--- TEST 1: DATE_TRUNC produce tipo de dato correcto (Paso 2)
+-- TEST 1: DATE_TRUNC produce un tipo temporal (Paso 2)
 SELECT
     'TEST 1 - DATE_TRUNC tipo correcto' AS prueba,
+    SYSTEM$TYPEOF(DATE_TRUNC('month', CURRENT_DATE)) AS tipo_detectado,
     CASE
-        WHEN TYPEOF(DATE_TRUNC('month', CURRENT_DATE))
-             IN ('DATE', 'TIMESTAMP_NTZ')
+        WHEN SYSTEM$TYPEOF(DATE_TRUNC('month', CURRENT_DATE)) LIKE '%DATE%'
+          OR SYSTEM$TYPEOF(DATE_TRUNC('month', CURRENT_DATE)) LIKE '%TIMESTAMP%'
         THEN '✅ PASÓ'
         ELSE '❌ FALLÓ'
     END AS resultado;
@@ -831,7 +1258,10 @@ WITH base AS (
     GROUP BY 1
 ),
 lag_test AS (
-    SELECT LAG(ventas) OVER (ORDER BY periodo_mes) AS lag_val
+    SELECT
+        periodo_mes,
+        ventas,
+        LAG(ventas) OVER (ORDER BY periodo_mes) AS lag_val
     FROM base
 )
 SELECT
@@ -896,13 +1326,28 @@ variaciones AS (
             * 100, 2
         ) AS variacion_pct
     FROM ventas_mensuales
-    QUALIFY variacion_pct IS NOT NULL
+),
+variaciones_filtradas AS (
+    SELECT *
+    FROM variaciones
+    WHERE variacion_pct IS NOT NULL
 ),
 ranking AS (
     SELECT
         ROW_NUMBER() OVER (ORDER BY variacion_pct DESC) AS rank_crec,
         ROW_NUMBER() OVER (ORDER BY variacion_pct ASC)  AS rank_caida
-    FROM variaciones
+    FROM variaciones_filtradas
+),
+reporte AS (
+    SELECT 'CREC' AS tipo
+    FROM ranking
+    WHERE rank_crec <= 3
+
+    UNION ALL
+
+    SELECT 'CAIDA' AS tipo
+    FROM ranking
+    WHERE rank_caida <= 3
 )
 SELECT
     'TEST 5 - Reporte top 3 produce 6 filas' AS prueba,
@@ -911,11 +1356,32 @@ SELECT
         ELSE '❌ FALLÓ - Se esperaban 6 filas, se obtuvieron: '
              || COUNT(*) || '. Verificar si hay empates en variacion_pct.'
     END AS resultado
-FROM ranking
-WHERE rank_crec <= 3 OR rank_caida <= 3;
+FROM reporte;
 ```
 
 **Resultado esperado de la validación:** Los 5 tests deben mostrar `✅ PASÓ`. Si alguno falla, revisa el paso correspondiente antes de continuar.
+
+---
+
+## Resultados esperados clave con el dataset cargado
+
+Estos resultados ayudan al instructor y al alumno a validar rápidamente que el laboratorio se está ejecutando sobre el dataset correcto.
+
+| Consulta / Validación | Resultado esperado |
+|---|---:|
+| Conteo de `CLIENTES` | 12 filas |
+| Conteo de `PRODUCTOS` | 8 filas |
+| Conteo de `VENTAS` | 108 filas |
+| Conteo de `PEDIDOS` | 108 filas |
+| Años con datos en `VENTAS` | 2022, 2023 y 2024 |
+| Meses con datos | 36 |
+| Registros por año | 36 por cada año |
+| Filas del análisis mensual | 36 |
+| Filas del análisis trimestral por año | 12 |
+| Filas del pivote YoY | 12 |
+| Filas sin año anterior en comparación YoY | 12 |
+| Reporte Top 3 crecimiento / Top 3 caída | 6 filas |
+| `LAG()` global mensual con `NULL` | Solo 1 fila, correspondiente al primer mes |
 
 ---
 
@@ -950,17 +1416,21 @@ ORDER BY periodo_mes
 LIMIT 5;
 ```
 
-Si esta consulta no devuelve filas, el problema está en el contexto de base de datos o schema. Verifica con `SELECT CURRENT_DATABASE(), CURRENT_SCHEMA();`.
+Si esta consulta no devuelve filas, el problema está en el contexto de base de datos o schema. Verifica con:
+
+```sql
+SELECT CURRENT_DATABASE(), CURRENT_SCHEMA();
+```
 
 ---
 
-### Problema 2: La variación porcentual YoY muestra valores inesperadamente extremos (ej. 10,000%)
+### Problema 2: La variación porcentual YoY muestra valores inesperadamente extremos
 
 **Síntoma:** Al ejecutar el Paso 5A, algunas filas muestran variaciones YoY de miles de por ciento, lo que no tiene sentido de negocio.
 
-**Causa probable:** El `LEFT JOIN` en la comparación YoY está produciendo múltiples coincidencias por `mes_numero`, lo que ocurre cuando existen registros duplicados en la CTE `ventas_mensuales` o cuando el `GROUP BY` no está incluyendo todas las columnas necesarias. Si hay dos filas para el mismo mes en la CTE (por ejemplo, si `DATE_TRUNC` y `YEAR/MONTH` no coinciden exactamente en el `GROUP BY`), el join multiplica los valores y produce sumas infladas.
+**Causa probable:** El `LEFT JOIN` en la comparación YoY está produciendo múltiples coincidencias por `mes_numero`, lo que ocurre cuando existen registros duplicados en la CTE `ventas_mensuales` o cuando el `GROUP BY` no está incluyendo todas las columnas necesarias. Si hay dos filas para el mismo mes en la CTE, el join multiplica los valores y produce sumas infladas.
 
-**Solución:** Verifica que la CTE base no tiene duplicados de periodo:
+**Solución:** Verifica que la CTE base no tiene duplicados de período:
 
 ```sql
 -- Diagnóstico: buscar duplicados en la CTE base
@@ -989,6 +1459,64 @@ Si esta consulta devuelve filas, hay un problema en el `GROUP BY`. Asegúrate de
 
 ---
 
+### Problema 3: El Paso 2C no devuelve registros
+
+**Síntoma:** La consulta semanal de los últimos 3 meses devuelve 0 filas.
+
+**Causa probable:** El dataset es histórico y no llega hasta la fecha actual. Si usas `CURRENT_DATE` para filtrar los últimos 3 meses, Snowflake buscará datos recientes respecto al día de ejecución, no respecto al último dato del dataset.
+
+**Solución:** Usa `MAX(FECHA_VENTA)` como referencia temporal del dataset:
+
+```sql
+WITH rango AS (
+    SELECT MAX(FECHA_VENTA) AS fecha_maxima
+    FROM VENTAS
+)
+SELECT
+    DATE_TRUNC('week', v.FECHA_VENTA) AS inicio_semana,
+    COUNT(*) AS cantidad_ventas,
+    ROUND(SUM(v.MONTO_TOTAL), 2) AS ventas_totales
+FROM VENTAS v
+CROSS JOIN rango r
+WHERE v.FECHA_VENTA >= DATEADD('month', -3, r.fecha_maxima)
+GROUP BY DATE_TRUNC('week', v.FECHA_VENTA)
+ORDER BY inicio_semana DESC;
+```
+
+---
+
+### Problema 4: Error "Object 'VENTAS' does not exist or not authorized"
+
+**Síntoma:** Al ejecutar cualquier consulta que referencia `VENTAS`, Snowflake retorna un error de objeto no encontrado o sin permisos.
+
+**Causa probable:** El contexto de sesión no está configurado correctamente o no se ejecutó el setup del Paso 0.
+
+**Solución:**
+
+1. Verifica el contexto activo:
+
+```sql
+SELECT CURRENT_WAREHOUSE(), CURRENT_DATABASE(), CURRENT_SCHEMA();
+```
+
+2. Configura el contexto correcto:
+
+```sql
+USE WAREHOUSE COMPUTE_WH;
+USE DATABASE LAB_SQL_INTERMEDIO;
+USE SCHEMA VENTAS;
+```
+
+3. Verifica que la tabla existe:
+
+```sql
+SHOW TABLES LIKE 'VENTAS';
+```
+
+4. Si no aparece, vuelve al archivo **`05_SETUP_DATOS_TENDENCIAS_PERIODO`** y ejecuta el script completo de setup.
+
+---
+
 ## Limpieza del Entorno
 
 Al finalizar el laboratorio, ejecuta los siguientes comandos para liberar recursos y evitar consumo innecesario de créditos Snowflake:
@@ -1001,15 +1529,15 @@ Al finalizar el laboratorio, ejecuta los siguientes comandos para liberar recurs
 
 -- 1. Suspender el warehouse para detener el consumo de créditos
 --    (OBLIGATORIO en cuentas trial)
-ALTER WAREHOUSE LAB_WH SUSPEND;
+ALTER WAREHOUSE COMPUTE_WH SUSPEND;
 
 -- 2. Verificar que el warehouse quedó suspendido
-SHOW WAREHOUSES LIKE 'LAB_WH';
+SHOW WAREHOUSES LIKE 'COMPUTE_WH';
 -- Confirmar que el campo "state" muestra SUSPENDED
 
--- 3. No es necesario eliminar objetos: este laboratorio solo
---    ejecutó consultas SELECT sobre tablas existentes.
---    No se crearon tablas, vistas ni objetos permanentes.
+-- 3. No es necesario eliminar objetos:
+--    las tablas creadas son parte del entorno de práctica
+--    y pueden reutilizarse en laboratorios posteriores.
 ```
 
 > ✅ **Confirmación:** Si el campo `state` del warehouse muestra `SUSPENDED`, el laboratorio ha concluido correctamente y no se generarán cargos adicionales.
@@ -1022,15 +1550,15 @@ En este laboratorio aplicaste un conjunto completo de técnicas de análisis tem
 
 | Técnica | Función(es) usada(s) | Paso donde se aplicó |
 |---|---|---|
-| Agrupación temporal por granularidad | `DATE_TRUNC('month'/'week'/'quarter', ...)` | Paso 2 |
-| Extracción de componentes de fecha | `YEAR()`, `MONTH()`, `QUARTER()`, `DAYOFWEEK()` | Pasos 1, 2, 5 |
-| Desplazamiento temporal en filtros | `DATEADD('month', -3, CURRENT_DATE)` | Paso 2C |
-| Comparación período anterior | `LAG() OVER (ORDER BY periodo_mes)` | Pasos 3, 4, 6 |
-| Variación porcentual segura | `(actual - anterior) / NULLIF(anterior, 0) * 100` | Pasos 4, 5, 6 |
-| Comparación Year-over-Year | Self-join en CTE + pivote con `CASE WHEN` | Paso 5 |
-| Reporte de rankings temporales | `ROW_NUMBER() OVER (ORDER BY variacion_pct)` | Paso 6 |
-| Formateo de fechas para presentación | `TO_CHAR(fecha, 'YYYY-MM')` | Pasos 2, 3, 5, 6 |
-| Filtrado de window functions (Snowflake) | `QUALIFY` | Paso 6 verificación |
+| Agrupación temporal por granularidad | `DATE_TRUNC('month'/'week'/'quarter', ...)` | Ejercicio 2 |
+| Extracción de componentes de fecha | `YEAR()`, `MONTH()`, `QUARTER()`, `DAYOFWEEK()` | Ejercicios 1, 2, 5 |
+| Desplazamiento temporal en filtros | `DATEADD('month', -3, fecha_maxima)` | Ejercicio 2C |
+| Comparación período anterior | `LAG() OVER (ORDER BY periodo_mes)` | Ejercicios 3, 4, 6 |
+| Variación porcentual segura | `(actual - anterior) / NULLIF(anterior, 0) * 100` | Ejercicios 4, 5, 6 |
+| Comparación Year-over-Year | Self-join en CTE + pivote con `CASE WHEN` | Ejercicio 5 |
+| Reporte de rankings temporales | `ROW_NUMBER() OVER (ORDER BY variacion_pct)` | Ejercicio 6 |
+| Formateo de fechas para presentación | `TO_CHAR(fecha, 'YYYY-MM')` | Ejercicios 2, 3, 5, 6 |
+| Filtrado indirecto de window functions | CTEs encadenadas / `QUALIFY` como alternativa Snowflake | Ejercicio 6 |
 
 ### Conexión con el siguiente módulo
 
@@ -1038,12 +1566,15 @@ Las técnicas de este laboratorio son la base directa del **Laboratorio 6**, don
 
 ### Recursos adicionales
 
-- [Documentación Snowflake: Date & Time Functions](https://docs.snowflake.com/en/sql-reference/functions-date-time)
-- [Documentación Snowflake: DATE_TRUNC](https://docs.snowflake.com/en/sql-reference/functions/date_trunc)
-- [Documentación Snowflake: DATEDIFF](https://docs.snowflake.com/en/sql-reference/functions/datediff)
-- [Documentación Snowflake: DATEADD](https://docs.snowflake.com/en/sql-reference/functions/dateadd)
-- [Documentación Snowflake: Window Functions (LAG/LEAD)](https://docs.snowflake.com/en/sql-reference/functions-analytic)
-- [Documentación Snowflake: QUALIFY clause](https://docs.snowflake.com/en/sql-reference/constructs/qualify)
+| Recurso | URL |
+|---|---|
+| Documentación Snowflake: Date & Time Functions | https://docs.snowflake.com/en/sql-reference/functions-date-time |
+| Documentación Snowflake: DATE_TRUNC | https://docs.snowflake.com/en/sql-reference/functions/date_trunc |
+| Documentación Snowflake: DATEDIFF | https://docs.snowflake.com/en/sql-reference/functions/datediff |
+| Documentación Snowflake: DATEADD | https://docs.snowflake.com/en/sql-reference/functions/dateadd |
+| Documentación Snowflake: Window Functions (LAG/LEAD) | https://docs.snowflake.com/en/sql-reference/functions-analytic |
+| Documentación Snowflake: QUALIFY clause | https://docs.snowflake.com/en/sql-reference/constructs/qualify |
 
 ---
+
 *Lab 05-00-01 — Análisis de tendencias y métricas por periodo | LAB_SQL_INTERMEDIO | Módulo 5*
